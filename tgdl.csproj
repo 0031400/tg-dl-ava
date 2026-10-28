@@ -3,6 +3,7 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>tgdl</AssemblyName>
@@ -16,6 +17,14 @@
     <UseSystemResourceKeys>false</UseSystemResourceKeys>
     <TrimmerSingleWarn>false</TrimmerSingleWarn>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- tools/ 下是独立的基准工程，别被主工程的默认通配吃进来 -->
+    <Compile Remove="tools\**" />
+    <None Remove="tools\**" />
+    <EmbeddedResource Remove="tools\**" />
+    <AvaloniaResource Remove="tools\**" />
+  </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Mtproto\TlSchema.txt" />

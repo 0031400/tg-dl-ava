@@ -58,6 +58,19 @@ public sealed class RpcException : MtpException
     }
 }
 
+/// <summary>把服务端在传输层返回的 4 字节错误码翻译成人话。</summary>
+public static class MtpTransportError
+{
+    public static string Describe(int code) => code switch
+    {
+        -404 => "-404 auth key 不存在 / 请求不被接受（握手阶段常见于被限流）",
+        -429 => "-429 请求太频繁，被限流",
+        -444 => "-444 DC 地址无效",
+        -5 => "-5 服务端主动关闭了连接",
+        _ => $"{code}（未知的传输层错误码）",
+    };
+}
+
 /// <summary>缺少可用的 auth key：界面据此提示用户去导入。</summary>
 public sealed class NeedAuthKeyException : MtpException
 {

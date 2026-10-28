@@ -67,7 +67,8 @@ Mtproto/
   TlReader.cs        # 通用 TL 反序列化器（读 4 字节 id → 查表 → 按字段展开）
   RsaKeys.g.cs       # Telegram 8 个 RSA 公钥（tools/gen_rsa_keys.py 从官方公钥生成）
   Rsa.cs             # RSA_PAD（sha1(data)+data+随机填充到 255 字节 → 裸 RSA 256 字节）
-  Crypto.cs          # AES-256-IGE、msg_key 派生、auth key
+  Crypto.cs          # AES-256-IGE（自动选路）、msg_key 派生、auth key
+  AesNiIge.cs        # AES-NI 指令实现的 AES-256-IGE（快路径）
   DhHandshake.cs     # req_pq_multi → resPQ → 分解 pq → req_DH_params →
                      # server_DH_params_ok → set_client_DH_params → dh_gen_ok
   MtpTransport.cs    # TCP + intermediate 传输（0xEEEEEEEE + 4 字节长度前缀）
@@ -108,8 +109,8 @@ Mtproto/
 
 | 动作 | 行为 |
 | --- | --- |
-| **启动** | 先用主 key 连主 DC 并调一次 `help.getConfig` 验证 key 没失效；然后按设置里的
-「使用多少条 auth key」把连接建满。数量不够就**现场派生新 key 并写进 `authkeys.json`**。 |
+| **启动** | 先用主 key 连主 DC 并调一次 `help.getConfig` 验证 key 没失效；然后把这个账号在**主 DC** 上
+已有的 key 都连上（主 DC 不能派生，见下）。下载别的 DC 的文件时才按设置数量派生。 |
 | 下载时换 DC | 文件在别的 DC 而那个 DC 的 key 不够 → 同样自动派生到设置的数量。 |
 | 派生不了 | 直接抛出可操作的提示并跳到「Auth Key」页、自动展开导入面板，例如
 「DC4 上没有可用的 auth key，自动派生也失败了（…）。请到「Auth Key」页导入一条 DC4 的 key。」 |
@@ -121,9 +122,15 @@ Mtproto/
 * 懒得点也行——**加入任务时会自动启动**；
 * 停止之后再点启动，队列会接着往下跑。
 
-> 主 DC 上的连接数受一个硬限制：`exportAuthorization` 不能导出"当前连接所在 DC"的授权，
-> 所以主 DC 理论上只有登录时那几条 key。程序会尝试「借道另一台已授权的 DC」绕过去派生，
-> 服务端不接受就回退并在日志里说明（`AuthKeyManager.BridgeUnsupported` 会记住，不再重复试）。
+> **主 DC 的 key 数量是死的。** `exportAuthorization` 不能导出主 DC 的授权，而且实测连
+> 「借道另一台 DC 去导出」也不行 —— 服务端直接回 `303 USER_MIGRATE_<home_dc>`，
+> 意思是"这个账号只能在主 DC 上操作"。所以主 DC 上永远只有你登录时产生的那几条 key，
+> 设置里的「使用多少条」对它无效（日志会明确说明）。
+>
+> 程序仍会试一次借道，但**先做一次导出预检**（一个 rpc，几百毫秒），失败就直接退出，
+> 不会先花 5~9 秒做 DH 握手。结果记在 `AuthKeyManager.BridgeUnsupported` 里，同进程内不再重试。
+>
+> 真正需要多条 key 的是**下载所在的 DC**（文件在 DC4 就派生 DC4 的 key），那条路是通的。
 
 ## 文件在哪个 DC？不用你选
 
@@ -177,6 +184,28 @@ dotnet publish -c Release -r win-x64
 > ```bat
 > dotnet publish -c Release -r win-x64 -p:PublishAot=false -p:PublishSingleFile=true --self-contained true -o publish
 > ```
+
+## 性能：AES-IGE 实测（512 KiB 分片 × 400 次）
+
+同一个 CPU（支持 AES-NI），三份实现、同样的输入，逐字节比对过密文一致：
+
+| 实现 | 加密 | 解密 | 说明 |
+| --- | --- | --- | --- |
+| C# 托管 `Aes.Create + TransformBlock` | 104.6 MB/s | 98.7 MB/s | 每 16 字节过一次托管↔原生边界 |
+| **C libcrypto (OpenSSL 3) `AES_encrypt`** | 82.5 MB/s | 44.7 MB/s | 反而更慢 |
+| **C# AES-NI 内联（现在默认）** | **852 MB/s** | **848 MB/s** | 硬件指令，单块 ~0.5µs/32 块 |
+
+结论：**没有引入 libcrypto 的必要**。
+
+* IGE 是串行链式（后一块依赖前一块密文），没法像 CTR/ECB 那样批量铺开，
+  所以只能一块一块调 AES。OpenSSL 的 `AES_encrypt` 是 legacy API，
+  每块一次函数调用 + 能力检测，实测这份 `libcrypto-3-x64.dll` 还没走到 AES-NI，
+  比 .NET 的 BCrypt 路径更慢。Python 版之所以需要 libssl，是因为纯 Python AES 只有
+  300 KB/s —— C# 天生没这个问题。
+* 换成 AES-NI 内联后比旧实现快 **8.5 倍**。按 20 MB/s 下载速度算，解密只占单核 2%，
+  旧实现要占 19%（多连接叠加时会明显吃 CPU）。
+
+复现：`cd tools/aesbench && dotnet run -c Release`（需要先按 `build.sh` 编出 shim）。
 
 ## 已知限制
 

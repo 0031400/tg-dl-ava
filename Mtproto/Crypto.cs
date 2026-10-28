@@ -1,6 +1,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
+using HwAes = System.Runtime.Intrinsics.X86.Aes;
+using HwSse2 = System.Runtime.Intrinsics.X86.Sse2;
 
 namespace tgdl.Mtproto;
 
@@ -48,13 +50,24 @@ public static class MtpCrypto
         sha256b.AsSpan(24, 8).CopyTo(iv.Slice(24));
     }
 
-    /// <summary>
-    /// AES-256-IGE 加解密（原地）。IGE 是串行链式，无法并行，
-    /// 所以按块调用一次 ECB；实测足够跑满 Telegram 的带宽。
-    /// </summary>
+    /// <summary>CPU 有 AES-NI 时走内联指令（见 AesNiIge），否则退回托管实现。</summary>
+    private static readonly bool UseAesNi = HwAes.IsSupported && HwSse2.IsSupported;
+
+    /// <summary>AES-256-IGE 加密（原地）。IGE 是串行链式，无法并行，只能一块一块来。</summary>
     public static void AesIgeEncrypt(byte[] data, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
     {
         if (data.Length % 16 != 0) throw new ArgumentException("IGE 数据必须是 16 的倍数");
+        if (UseAesNi && key.Length == 32 && iv.Length == 32)
+        {
+            AesNiIge.Encrypt(data, key, iv);
+            return;
+        }
+        AesIgeEncryptManaged(data, key, iv);
+    }
+
+    /// <summary>纯托管实现（Aes.Create + 每块一次 TransformBlock）。没有 AES-NI 时用，也作为基准对照。</summary>
+    internal static void AesIgeEncryptManaged(byte[] data, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
+    {
         using var aes = Aes.Create();
         aes.Mode = CipherMode.ECB;
         aes.Padding = PaddingMode.None;
@@ -81,9 +94,21 @@ public static class MtpCrypto
         }
     }
 
+    /// <summary>AES-256-IGE 解密（原地）。</summary>
     public static void AesIgeDecrypt(byte[] data, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
     {
         if (data.Length % 16 != 0) throw new ArgumentException("IGE 数据必须是 16 的倍数");
+        if (UseAesNi && key.Length == 32 && iv.Length == 32)
+        {
+            AesNiIge.Decrypt(data, key, iv);
+            return;
+        }
+        AesIgeDecryptManaged(data, key, iv);
+    }
+
+    /// <summary>纯托管实现（Aes.Create + 每块一次 TransformBlock）。</summary>
+    internal static void AesIgeDecryptManaged(byte[] data, ReadOnlySpan<byte> key, ReadOnlySpan<byte> iv)
+    {
         using var aes = Aes.Create();
         aes.Mode = CipherMode.ECB;
         aes.Padding = PaddingMode.None;

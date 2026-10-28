@@ -57,8 +57,28 @@ public static class AuthKeyManager
             control = await GetBridgeConnectionAsync(pool, targetDc, progress, ct).ConfigureAwait(false);
         }
 
+        // 先探一次导出：这一步很便宜（一个 rpc），但能提前发现"根本不允许导出"，
+        // 避免先做 2~5 秒 DH 握手再失败。
+        (long Id, byte[] Bytes) preflight;
+        try
+        {
+            preflight = await MtpApi.ExportAuthorizationAsync(control, targetDc, ct).ConfigureAwait(false);
+        }
+        catch (RpcException ex) when (ex.Text.Contains("USER_MIGRATE", StringComparison.Ordinal))
+        {
+            if (home == targetDc)
+            {
+                _bridgeUnsupported = true;
+                throw new MtpException(
+                    $"DC{targetDc} 是主 DC，服务端明确不允许导出它的授权（{ex.Text}）：" +
+                    $"「{ex.Text}」表示这个账号只能在 DC{targetDc} 上操作，所以换个 DC 去导出也没用。" +
+                    $"主 DC 只能用登录时产生的那几条 key，下载其他 DC 的文件时才需要多条 key。");
+            }
+            throw;
+        }
+
         var opt = pool.Options;
-        progress?.Report($"并行对 DC{targetDc} 做 {count} 次 DH 握手…");
+        progress?.Report($"导出授权成功，并行对 DC{targetDc} 做 {count} 次 DH 握手…");
 
         // 1) 并行握手
         var blankTasks = Enumerable.Range(0, count)
@@ -75,12 +95,17 @@ public static class AuthKeyManager
         // 2) 串行导出 + 导入
         var created = new List<string>();
         int index = 0;
+        bool usePreflight = true;
         foreach (var blank in blanks)
         {
             index++;
             try
             {
-                var (id, bytes) = await MtpApi.ExportAuthorizationAsync(control, targetDc, ct).ConfigureAwait(false);
+                // 第一条直接用预检拿到的 token，后面每条导入前现导一次
+                var (id, bytes) = usePreflight
+                    ? preflight
+                    : await MtpApi.ExportAuthorizationAsync(control, targetDc, ct).ConfigureAwait(false);
+                usePreflight = false;
                 await MtpApi.ImportAuthorizationAsync(blank, id, bytes, ct).ConfigureAwait(false);
                 var hex = blank.Key.Hex;
                 AuthKeyStore.Add(targetDc, hex);
@@ -90,10 +115,11 @@ public static class AuthKeyManager
             }
             catch (Exception ex)
             {
-                if (home == targetDc && ex is RpcException)
+                usePreflight = false;
+                if (home == targetDc && ex is RpcException rpc)
                 {
                     _bridgeUnsupported = true;
-                    progress?.Report($"服务端拒绝从其他 DC 导出主 DC 的授权（{ex.Message}）——" +
+                    progress?.Report($"服务端拒绝从其他 DC 导出主 DC 的授权（{rpc.Message}）——" +
                                      "只能用手上已有的 key，不再尝试借道");
                 }
                 progress?.Report($"DC{targetDc} 第 {index}/{blanks.Count} 条创建失败：{ex.Message}");

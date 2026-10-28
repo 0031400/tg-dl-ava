@@ -269,9 +269,10 @@ public sealed class MtpConnection : IAsyncDisposable
         {
             // 服务端在传输层直接拒绝：最常见的原因是这条 auth key 已经失效（被重置/删除）
             int code = BinaryPrimitives.ReadInt32LittleEndian(frame);
-            MtpLog.Write($"服务端拒绝（传输层 code {code}）：auth_key_id=0x{_key.Id:x16}");
-            throw new MtpException(
-                $"服务端拒绝了这条 auth key（传输层 code {code}）—— key 可能已被重置或删除，请重新导入");
+            MtpLog.Write($"服务端拒绝（传输层 {MtpTransportError.Describe(code)}）：auth_key_id=0x{_key.Id:x16}");
+            throw new MtpException(code == -404
+                ? $"服务端不认识这条 auth key（-404）：它可能已被重置或删除，请重新导入"
+                : $"服务端拒绝了请求：{MtpTransportError.Describe(code)}");
         }
         if (frame.Length < 24 + 32)
         {

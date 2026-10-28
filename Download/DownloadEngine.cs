@@ -94,8 +94,8 @@ public sealed class DownloadEngine : IAsyncDisposable
 
     private void Emit(string message)
     {
+        // 只走 Log 事件：MtpLog.Sink 也接到了 UI，两边都写会导致每行日志出现两次
         Log?.Invoke(message);
-        MtpLog.Write(message);
     }
 
     public List<DownloadTask> Snapshot()
@@ -156,11 +156,24 @@ public sealed class DownloadEngine : IAsyncDisposable
             await MtpApi.GetConfigAsync(control, token).ConfigureAwait(false);
             Emit($"主连接就绪：DC{home}（auth_key {control.Key.ShortHex}…）");
 
-            // 按设置数量把连接都建起来（不足会派生）
-            var conns = await _pool.GetDownloadConnectionsAsync(home, want, progress, token).ConfigureAwait(false);
-            Emit($"DC{home} 连接就绪：{conns.Count} 条（设置要求 {want} 条）");
+            // 主 DC 不能派生新 key（见 AuthKeyManager 的说明），所以只把已有的 key 连上；
+            // 「设置的数量」对主 DC 来说最多只能到"你实际拥有的 key 数"。
+            var homeKeys = AuthKeyStore.KeysFor(home);
+            int made = 1;
+            foreach (var k in homeKeys.Skip(1).Take(Math.Max(0, want - 1)))
+            {
+                await _pool.GetAsync(home, k, token).ConfigureAwait(false);
+                made++;
+            }
+            if (made < want)
+            {
+                Emit($"主 DC{home} 只有 {made} 条可用 key（设置要求 {want} 条）。" +
+                     $"主 DC 无法派生更多 —— 只有登录时产生的那些 key 能用；" +
+                     $"下载其他 DC 的文件时会自动派生到 {want} 条。");
+            }
+            Emit($"DC{home} 连接就绪：{made} 条");
 
-            SetSession(SessionState.Ready, $"DC{home} · {conns.Count} 条连接");
+            SetSession(SessionState.Ready, $"DC{home} · {made} 条连接");
             _signal.Release();
         }
         catch (OperationCanceledException)

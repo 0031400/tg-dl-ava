@@ -27,7 +27,7 @@ public static class DhHandshake
         w.WriteUInt(TlIds.ReqPqMulti).WriteRaw(nonce);
         await SendPlainAsync(transport, w.ToArray(), gen, ct).ConfigureAwait(false);
 
-        var resPq = await ReadPlainAsync(transport, ct).ConfigureAwait(false);
+        var resPq = await ReadPlainAsync(transport, "req_pq_multi", ct).ConfigureAwait(false);
         var r = new TlReader(resPq);
         uint id = r.ReadUInt();
         if (id != TlIds.ResPQ) throw new MtpException($"期望 resPQ，收到 0x{id:x8}");
@@ -87,7 +87,7 @@ public static class DhHandshake
            .WriteByteString(encryptedData);
         await SendPlainAsync(transport, req.ToArray(), gen, ct).ConfigureAwait(false);
 
-        var dhResp = await ReadPlainAsync(transport, ct).ConfigureAwait(false);
+        var dhResp = await ReadPlainAsync(transport, "req_DH_params", ct).ConfigureAwait(false);
         var r2 = new TlReader(dhResp);
         uint id2 = r2.ReadUInt();
         if (id2 == TlIds.ServerDHParamsFail)
@@ -166,7 +166,7 @@ public static class DhHandshake
            .WriteByteString(cdHashed);
         await SendPlainAsync(transport, scw.ToArray(), gen, ct).ConfigureAwait(false);
 
-        var genResp = await ReadPlainAsync(transport, ct).ConfigureAwait(false);
+        var genResp = await ReadPlainAsync(transport, "set_client_DH_params", ct).ConfigureAwait(false);
         var r4 = new TlReader(genResp);
         uint id4 = r4.ReadUInt();
         if (id4 != TlIds.DhGenOk && id4 != TlIds.DhGenRetry && id4 != TlIds.DhGenFail)
@@ -253,16 +253,15 @@ public static class DhHandshake
         await t.SendFrameAsync(frame, ct).ConfigureAwait(false);
     }
 
-    private static async Task<byte[]> ReadPlainAsync(MtpTransport t, CancellationToken ct)
+    private static async Task<byte[]> ReadPlainAsync(MtpTransport t, string step, CancellationToken ct)
     {
         var frame = await t.ReadFrameAsync(ct).ConfigureAwait(false);
         if (frame.Length == 4)
         {
             int code = BinaryPrimitives.ReadInt32LittleEndian(frame);
-            throw new MtpException($"服务端在传输层拒绝了本次请求（code {code}），" +
-                                   "通常是握手被限流，稍后重试即可");
+            throw new MtpException($"{step} 被服务端拒绝：{MtpTransportError.Describe(code)}");
         }
-        if (frame.Length < 20) throw new MtpException($"握手响应太短（{frame.Length} 字节）");
+        if (frame.Length < 20) throw new MtpException($"{step} 的响应太短（{frame.Length} 字节）");
         ulong authKeyId = BinaryPrimitives.ReadUInt64LittleEndian(frame.AsSpan(0));
         if (authKeyId != 0) throw new MtpException("握手阶段收到了加密消息");
         int len = BinaryPrimitives.ReadInt32LittleEndian(frame.AsSpan(16));

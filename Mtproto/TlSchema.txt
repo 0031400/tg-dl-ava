@@ -1,0 +1,491 @@
+2ea2c0d4|auth.authorization|!1:flags 1.1?T:setup_password_required 1.1?i:otherwise_relogin_days 1.0?i:tmp_sessions 1.2?b:future_auth_token #:user
+44747e9a|auth.authorizationSignUpRequired|!1:flags 1.0?#:terms_of_service
+b434e2b8|auth.exportedAuthorization|l:id b:bytes
+5b11125a|baseThemeArctic|
+c3a12462|baseThemeClassic|
+fbd81688|baseThemeDay|
+b7b31ea8|baseThemeNight|
+6d5f77ee|baseThemeTinted|
+6c8e1e06|birthday|!1:flags i:day i:month 1.0?i:year
+95fcd1d6|botApp|!1:flags l:id l:access_hash s:short_name s:title s:description #:photo 1.0?#:document l:hash
+5da674b7|botAppNotModified|
+1c32b11c|channel|!1:flags 1.0?T:creator 1.2?T:left 1.5?T:broadcast 1.7?T:verified 1.8?T:megagroup 1.9?T:restricted 1.11?T:signatures 1.12?T:min 1.19?T:scam 1.20?T:has_link 1.21?T:has_geo 1.22?T:slowmode_enabled 1.23?T:call_active 1.24?T:call_not_empty 1.25?T:fake 1.26?T:gigagroup 1.27?T:noforwards 1.28?T:join_to_send 1.29?T:join_request 1.30?T:forum !2:flags2 2.1?T:stories_hidden 2.2?T:stories_hidden_min 2.3?T:stories_unavailable 2.12?T:signature_profiles 2.15?T:autotranslation 2.16?T:broadcast_messages_allowed 2.17?T:monoforum 2.19?T:forum_tabs l:id 1.13?l:access_hash s:title 1.6?s:username #:photo i:date 1.9?*#:restriction_reason 1.14?#:admin_rights 1.15?#:banned_rights 1.18?#:default_banned_rights 1.17?i:participants_count 2.0?*#:usernames 2.4?#:stories_max_id 2.7?#:color 2.8?#:profile_color 2.9?#:emoji_status 2.10?i:level 2.11?i:subscription_until_date 2.13?l:bot_verification_icon 2.14?l:send_paid_messages_stars 2.18?l:linked_monoforum_id
+17d493d5|channelForbidden|!1:flags 1.5?T:broadcast 1.8?T:megagroup 1.10?T:monoforum l:id l:access_hash s:title 1.16?i:until_date
+41cbf256|chat|!1:flags 1.0?T:creator 1.2?T:left 1.5?T:deactivated 1.23?T:call_active 1.24?T:call_not_empty 1.25?T:noforwards l:id s:title #:photo i:participants_count i:date i:version 1.6?#:migrated_to 1.14?#:admin_rights 1.18?#:default_banned_rights
+5fb224d5|chatAdminRights|!1:flags 1.0?T:change_info 1.1?T:post_messages 1.2?T:edit_messages 1.3?T:delete_messages 1.4?T:ban_users 1.5?T:invite_users 1.7?T:pin_messages 1.9?T:add_admins 1.10?T:anonymous 1.11?T:manage_call 1.12?T:other 1.13?T:manage_topics 1.14?T:post_stories 1.15?T:edit_stories 1.16?T:delete_stories 1.17?T:manage_direct_messages 1.18?T:manage_ranks
+9f120418|chatBannedRights|!1:flags 1.0?T:view_messages 1.1?T:send_messages 1.2?T:send_media 1.3?T:send_stickers 1.4?T:send_gifs 1.5?T:send_games 1.6?T:send_inline 1.7?T:embed_links 1.8?T:send_polls 1.10?T:change_info 1.15?T:invite_users 1.17?T:pin_messages 1.18?T:manage_topics 1.19?T:send_photos 1.20?T:send_videos 1.21?T:send_roundvideos 1.22?T:send_audios 1.23?T:send_voices 1.24?T:send_docs 1.25?T:send_plain 1.26?T:edit_rank 1.27?T:send_reactions i:until_date
+29562865|chatEmpty|l:id
+6592a1a7|chatForbidden|l:id s:title
+1c6e1c11|chatPhoto|!1:flags 1.0?T:has_video l:photo_id 1.1?b:stripped_thumb i:dc_id
+37c1011c|chatPhotoEmpty|
+c3dffc04|chatTheme|s:emoticon
+3458f9c8|chatThemeUniqueGift|#:gift *#:theme_settings
+cc1a241e|config|!1:flags 1.3?T:default_p2p_contacts 1.4?T:preload_featured_stickers 1.6?T:revoke_pm_inbox 1.8?T:blocked_mode 1.14?T:force_try_ipv6 i:date i:expires B:test_mode i:this_dc *#:dc_options s:dc_txt_domain_name i:chat_size_max i:megagroup_size_max i:forwarded_count_max i:online_update_period_ms i:offline_blur_timeout_ms i:offline_idle_timeout_ms i:online_cloud_timeout_ms i:notify_cloud_delay_ms i:notify_default_delay_ms i:push_chat_period_ms i:push_chat_limit i:edit_time_limit i:revoke_time_limit i:revoke_pm_time_limit i:rating_e_decay i:stickers_recent_limit i:channels_read_media_period 1.0?i:tmp_sessions i:call_receive_timeout_ms i:call_ring_timeout_ms i:call_connect_timeout_ms i:call_packet_timeout_ms s:me_url_prefix 1.7?s:autoupdate_url_prefix 1.9?s:gif_search_username 1.10?s:venue_search_username 1.11?s:img_search_username 1.12?s:static_maps_provider i:caption_length_max i:message_length_max i:webfile_dc_id 1.2?s:suggested_lang_code 1.2?i:lang_pack_version 1.2?i:base_lang_pack_version 1.15?#:reactions_default 1.16?s:autologin_token
+7d748d04|dataJSON|s:data
+18b7a10d|dcOption|!1:flags 1.0?T:ipv6 1.1?T:media_only 1.2?T:tcpo_only 1.3?T:cdn 1.4?T:static 1.5?T:this_port_only i:id s:ip_address i:port 1.10?b:secret
+fc89f7f3|dialog|!1:flags 1.2?T:pinned 1.3?T:unread_mark 1.6?T:view_forum_as_messages #:peer i:top_message i:read_inbox_max_id i:read_outbox_max_id i:unread_count i:unread_mentions_count i:unread_reactions_count i:unread_poll_votes_count #:notify_settings 1.0?i:pts 1.1?#:draft 1.4?i:folder_id 1.5?i:ttl_period
+71bd134c|dialogFolder|!1:flags 1.2?T:pinned #:folder #:peer i:top_message i:unread_muted_peers_count i:unread_unmuted_peers_count i:unread_muted_messages_count i:unread_unmuted_messages_count
+8fd4c4d8|document|!1:flags l:id l:access_hash b:file_reference i:date s:mime_type l:size 1.0?*#:thumbs 1.1?*#:video_thumbs i:dc_id *#:attributes
+11b58939|documentAttributeAnimated|
+9852f9c6|documentAttributeAudio|!1:flags 1.10?T:voice i:duration 1.0?s:title 1.1?s:performer 1.2?b:waveform
+fd149899|documentAttributeCustomEmoji|!1:flags 1.0?T:free 1.1?T:text_color s:alt #:stickerset
+15590068|documentAttributeFilename|s:file_name
+9801d2f7|documentAttributeHasStickers|
+6c37c15c|documentAttributeImageSize|i:w i:h
+6319d612|documentAttributeSticker|!1:flags 1.1?T:mask s:alt #:stickerset 1.0?#:mask_coords
+43c57c48|documentAttributeVideo|!1:flags 1.0?T:round_message 1.1?T:supports_streaming 1.3?T:nosound d:duration i:w i:h 1.2?i:preload_prefix_size 1.4?d:video_start_ts 1.5?s:video_codec
+36f8c871|documentEmpty|l:id
+96eaa5eb|draftMessage|!1:flags 1.1?T:no_webpage 1.6?T:invert_media 1.4?#:reply_to s:message 1.3?*#:entities 1.5?#:media i:date 1.7?l:effect 1.8?#:suggested_post
+1b0c841a|draftMessageEmpty|!1:flags 1.0?i:date
+e7ff068a|emojiStatus|!1:flags l:document_id 1.0?i:until
+7184603b|emojiStatusCollectible|!1:flags l:collectible_id l:document_id s:title s:slug l:pattern_document_id i:center_color i:edge_color i:pattern_color i:text_color 1.0?i:until
+2de11aae|emojiStatusEmpty|
+b89bfccf|factCheck|!1:flags 1.0?T:need_check 1.1?s:country 1.1?#:text l:hash
+f39b035c|fileHash|l:offset i:limit b:hash
+ff544e65|folder|!1:flags 1.0?T:autofill_new_broadcasts 1.1?T:autofill_public_groups 1.2?T:autofill_new_correspondents i:id s:title 1.3?#:photo
+fcdad815|forumTopic|!1:flags 1.1?T:my 1.2?T:closed 1.3?T:pinned 1.5?T:short 1.6?T:hidden 1.7?T:title_missing i:id i:date #:peer s:title i:icon_color 1.0?l:icon_emoji_id i:top_message i:read_inbox_max_id i:read_outbox_max_id i:unread_count i:unread_mentions_count i:unread_reactions_count i:unread_poll_votes_count #:from_id #:notify_settings 1.4?#:draft
+023f109b|forumTopicDeleted|i:id
+bdf9653b|game|!1:flags l:id l:access_hash s:short_name s:title s:description #:photo 1.0?#:document
+b2a2f663|geoPoint|!1:flags d:long d:lat l:access_hash 1.0?i:accuracy_radius
+de4c5d93|geoPointAddress|!1:flags s:country_iso2 1.0?s:state 1.1?s:city 1.2?s:street
+1117dd5f|geoPointEmpty|
+780a0310|help.termsOfService|!1:flags 1.0?T:popup #:id s:text *#:entities 1.1?i:min_age_confirm
+0e3b2d0c|inlineQueryPeerTypeBotPM|
+6334ee9a|inlineQueryPeerTypeBroadcast|
+d766c50a|inlineQueryPeerTypeChat|
+5ec4be43|inlineQueryPeerTypeMegagroup|
+833c0fac|inlineQueryPeerTypePM|
+3081ed9d|inlineQueryPeerTypeSameBotPM|
+f35aec28|inputChannel|l:channel_id l:access_hash
+ee8c1e86|inputChannelEmpty|
+5b934f9d|inputChannelFromMessage|#:peer i:msg_id l:channel_id
+1abfb575|inputDocument|l:id l:access_hash b:file_reference
+72f0eaae|inputDocumentEmpty|
+07141dbf|inputEmojiStatusCollectible|!1:flags l:collectible_id 1.0?i:until
+f52ff27f|inputFile|l:id i:parts s:name s:md5_checksum
+fa4f0bb5|inputFileBig|l:id i:parts s:name
+62dc8b48|inputFileStoryDocument|#:id
+032c3e77|inputGameID|l:id l:access_hash
+c331e80a|inputGameShortName|#:bot_id s:short_name
+48222faf|inputGeoPoint|!1:flags d:lat d:long 1.0?i:accuracy_radius
+e4c123d6|inputGeoPointEmpty|
+d8aa840f|inputGroupCall|l:id l:access_hash
+8c10603f|inputGroupCallInviteMessage|i:msg_id
+fe06823f|inputGroupCallSlug|s:slug
+02b78156|inputKeyboardButtonRequestPeer|!1:flags 1.0?T:name_requested 1.1?T:username_requested 1.2?T:photo_requested 1.10?#:style s:text i:button_id #:peer_type i:max_quantity
+68013e72|inputKeyboardButtonUrlAuth|!1:flags 1.0?T:request_write_access 1.10?#:style s:text 1.1?s:fwd_text s:url #:bot
+7d5e07c7|inputKeyboardButtonUserProfile|!1:flags 1.10?#:style s:text #:user_id
+2271f2bf|inputMediaAreaChannelPost|#:coordinates #:channel i:msg_id
+b282217f|inputMediaAreaVenue|#:coordinates l:query_id s:result_id
+f8ab7dfb|inputMediaContact|s:phone_number s:first_name s:last_name s:vcard
+e66fbf7b|inputMediaDice|s:emoticon
+a8763ab5|inputMediaDocument|!1:flags 1.2?T:spoiler #:id 1.3?#:video_cover 1.4?i:video_timestamp 1.0?i:ttl_seconds 1.1?s:query
+779600f9|inputMediaDocumentExternal|!1:flags 1.1?T:spoiler s:url 1.0?i:ttl_seconds 1.2?#:video_cover 1.3?i:video_timestamp
+9664f57f|inputMediaEmpty|
+d33f43f3|inputMediaGame|#:id
+971fa843|inputMediaGeoLive|!1:flags 1.0?T:stopped #:geo_point 1.2?i:heading 1.1?i:period 1.3?i:proximity_notification_radius
+f9c44144|inputMediaGeoPoint|#:geo_point
+405fef0d|inputMediaInvoice|!1:flags s:title s:description 1.0?#:photo #:invoice b:payload 1.3?s:provider #:provider_data 1.1?s:start_param 1.2?#:extended_media
+c4103386|inputMediaPaidMedia|!1:flags l:stars_amount *#:extended_media 1.0?s:payload
+e3af4434|inputMediaPhoto|!1:flags 1.1?T:spoiler 1.2?T:live_photo #:id 1.0?i:ttl_seconds 1.2?#:video
+e5bbfe1a|inputMediaPhotoExternal|!1:flags 1.1?T:spoiler s:url 1.0?i:ttl_seconds
+883a4108|inputMediaPoll|!1:flags #:poll 1.0?*i:correct_answers 1.3?#:attached_media 1.1?s:solution 1.1?*#:solution_entities 1.2?#:solution_media
+f3a9244a|inputMediaStakeDice|s:game_hash l:ton_amount b:client_seed
+89fdd778|inputMediaStory|#:peer i:id
+9fc55fde|inputMediaTodo|#:todo
+037c9330|inputMediaUploadedDocument|!1:flags 1.3?T:nosound_video 1.4?T:force_file 1.5?T:spoiler #:file 1.2?#:thumb s:mime_type *#:attributes 1.0?*#:stickers 1.6?#:video_cover 1.7?i:video_timestamp 1.1?i:ttl_seconds
+7d8375da|inputMediaUploadedPhoto|!1:flags 1.2?T:spoiler 1.3?T:live_photo #:file 1.0?*#:stickers 1.1?i:ttl_seconds 1.3?#:video
+c13d1c11|inputMediaVenue|#:geo_point s:title s:address s:provider s:venue_id s:venue_type
+c21b8849|inputMediaWebPage|!1:flags 1.0?T:force_large_media 1.1?T:force_small_media 1.2?T:optional s:url
+208e68c9|inputMessageEntityMentionName|i:offset i:length #:user_id
+27bcbbfc|inputPeerChannel|l:channel_id l:access_hash
+bd2a0840|inputPeerChannelFromMessage|#:peer i:msg_id l:channel_id
+35a95cb9|inputPeerChat|l:chat_id
+b8ea86a9|inputPeerColorCollectible|l:collectible_id
+7f3b18ea|inputPeerEmpty|
+7da07ec9|inputPeerSelf|
+dde8a54c|inputPeerUser|l:user_id l:access_hash
+a87b0a1c|inputPeerUserFromMessage|#:peer i:msg_id l:user_id
+3bb3b94a|inputPhoto|l:id l:access_hash b:file_reference
+1cd7bf0d|inputPhotoEmpty|
+199fed96|inputPollAnswer|!1:flags #:text 1.0?#:media
+3bd4b7c2|inputReplyToMessage|!1:flags i:reply_to_msg_id 1.0?i:top_msg_id 1.1?#:reply_to_peer_id 1.2?s:quote_text 1.3?*#:quote_entities 1.4?i:quote_offset 1.5?#:monoforum_peer_id 1.6?i:todo_item_id 1.7?b:poll_option
+69d66c45|inputReplyToMonoForum|#:monoforum_peer_id
+5881323a|inputReplyToStory|#:peer i:story_id
+028703c8|inputStickerSetAnimatedEmoji|
+0cde3739|inputStickerSetAnimatedEmojiAnimations|
+e67f520e|inputStickerSetDice|s:emoticon
+49748553|inputStickerSetEmojiChannelDefaultStatuses|
+29d0f5ee|inputStickerSetEmojiDefaultStatuses|
+44c1f8e9|inputStickerSetEmojiDefaultTopicIcons|
+04c4d4ce|inputStickerSetEmojiGenericAnimations|
+ffb62b95|inputStickerSetEmpty|
+9de7a269|inputStickerSetID|l:id l:access_hash
+c88b3b02|inputStickerSetPremiumGifts|
+861cc8a0|inputStickerSetShortName|s:short_name
+1cf671a0|inputStickerSetTonGifts|
+f21158c6|inputUser|l:user_id l:access_hash
+b98886cf|inputUserEmpty|
+1da448e2|inputUserFromMessage|#:peer i:msg_id l:user_id
+f7c1b13f|inputUserSelf|
+9bed434d|inputWebDocument|s:url i:size s:mime_type *#:attributes
+049ee584|invoice|!1:flags 1.0?T:test 1.1?T:name_requested 1.2?T:phone_requested 1.3?T:email_requested 1.4?T:shipping_address_requested 1.5?T:flexible 1.6?T:phone_to_provider 1.7?T:email_to_provider 1.9?T:recurring s:currency *#:prices 1.8?l:max_tip_amount 1.8?*l:suggested_tip_amounts 1.10?s:terms_url 1.11?i:subscription_period
+7d170cff|keyboardButton|!1:flags 1.10?#:style s:text
+3fa53905|keyboardButtonBuy|!1:flags 1.10?#:style s:text
+e62bc960|keyboardButtonCallback|!1:flags 1.0?T:requires_password 1.10?#:style s:text b:data
+bcc4af10|keyboardButtonCopy|!1:flags 1.10?#:style s:text s:copy_text
+89c590f9|keyboardButtonGame|!1:flags 1.10?#:style s:text
+aa40f94d|keyboardButtonRequestGeoLocation|!1:flags 1.10?#:style s:text
+5b0f15f5|keyboardButtonRequestPeer|!1:flags 1.10?#:style s:text i:button_id #:peer_type i:max_quantity
+417efd8f|keyboardButtonRequestPhone|!1:flags 1.10?#:style s:text
+7a11d782|keyboardButtonRequestPoll|!1:flags 1.10?#:style 1.0?B:quiz s:text
+77608b83|keyboardButtonRow|*#:buttons
+e15c4370|keyboardButtonSimpleWebView|!1:flags 1.10?#:style s:text s:url
+4fdd3430|keyboardButtonStyle|!1:flags 1.0?T:bg_primary 1.1?T:bg_danger 1.2?T:bg_success 1.3?l:icon
+991399fc|keyboardButtonSwitchInline|!1:flags 1.0?T:same_peer 1.10?#:style s:text s:query 1.1?*#:peer_types
+d80c25ec|keyboardButtonUrl|!1:flags 1.10?#:style s:text s:url
+f51006f9|keyboardButtonUrlAuth|!1:flags 1.10?#:style s:text 1.0?s:fwd_text s:url i:button_id
+c0fd5d09|keyboardButtonUserProfile|!1:flags 1.10?#:style s:text l:user_id
+e846b1a0|keyboardButtonWebView|!1:flags 1.10?#:style s:text s:url
+cb296bf8|labeledPrice|s:label l:amount
+aed6dbb2|maskCoords|i:n d:x d:y d:zoom
+770416af|mediaAreaChannelPost|#:coordinates l:channel_id i:msg_id
+cfc9e002|mediaAreaCoordinates|!1:flags d:x d:y d:w d:h d:rotation 1.0?d:radius
+cad5452d|mediaAreaGeoPoint|!1:flags #:coordinates #:geo 1.0?#:address
+5787686d|mediaAreaStarGift|#:coordinates s:slug
+14455871|mediaAreaSuggestedReaction|!1:flags 1.0?T:dark 1.1?T:flipped #:coordinates #:reaction
+37381085|mediaAreaUrl|#:coordinates s:url
+be82db9c|mediaAreaVenue|#:coordinates #:geo s:title s:address s:provider s:venue_id s:venue_type
+49a6549c|mediaAreaWeather|#:coordinates s:emoji d:temperature_c i:color
+95ef6f2b|message|!1:flags 1.1?T:out 1.4?T:mentioned 1.5?T:media_unread 1.13?T:silent 1.14?T:post 1.18?T:from_scheduled 1.19?T:legacy 1.21?T:edit_hide 1.24?T:pinned 1.26?T:noforwards 1.27?T:invert_media !2:flags2 2.1?T:offline 2.4?T:video_processing_pending 2.8?T:paid_suggested_post_stars 2.9?T:paid_suggested_post_ton i:id 1.8?#:from_id 1.29?i:from_boosts_applied 2.12?s:from_rank #:peer_id 1.28?#:saved_peer_id 1.2?#:fwd_from 1.11?l:via_bot_id 2.0?l:via_business_bot_id 2.19?#:guestchat_via_from 1.3?#:reply_to i:date s:message 1.9?#:media 1.6?#:reply_markup 1.7?*#:entities 1.10?i:views 1.10?i:forwards 1.23?#:replies 1.15?i:edit_date 1.16?s:post_author 1.17?l:grouped_id 1.20?#:reactions 1.22?*#:restriction_reason 1.25?i:ttl_period 1.30?i:quick_reply_shortcut_id 2.2?l:effect 2.3?#:factcheck 2.5?i:report_delivery_until_date 2.6?l:paid_message_stars 2.7?#:suggested_post 2.10?i:schedule_repeat_period 2.11?s:summary_from_language
+cc02aa6d|messageActionBoostApply|i:boosts
+c516d679|messageActionBotAllowed|!1:flags 1.1?T:attach_menu 1.3?T:from_request 1.0?s:domain 1.2?#:app
+e188503b|messageActionChangeCreator|l:new_creator_id
+95d2ac92|messageActionChannelCreate|s:title
+ea3948e9|messageActionChannelMigrateFrom|s:title l:chat_id
+15cefd00|messageActionChatAddUser|*l:users
+bd47cbad|messageActionChatCreate|s:title *l:users
+95e3fbef|messageActionChatDeletePhoto|
+a43f30cc|messageActionChatDeleteUser|l:user_id
+7fcb13a8|messageActionChatEditPhoto|#:photo
+b5a1ce5a|messageActionChatEditTitle|s:title
+031224c3|messageActionChatJoinedByLink|l:inviter_id
+ebbca3cb|messageActionChatJoinedByRequest|
+e1037f92|messageActionChatMigrateTo|l:channel_id
+2ffe2f7a|messageActionConferenceCall|!1:flags 1.0?T:missed 1.1?T:active 1.4?T:video l:call_id 1.2?i:duration 1.3?*#:other_participants
+f3f25f76|messageActionContactSignUp|
+fae69f56|messageActionCustomAction|s:message
+b6aef7b0|messageActionEmpty|
+92a72876|messageActionGameScore|l:game_id i:score
+98e0d697|messageActionGeoProximityReached|#:from_id #:to_id i:distance
+31c48347|messageActionGiftCode|!1:flags 1.0?T:via_giveaway 1.5?T:unclaimed 1.1?#:boost_peer i:days s:slug 1.2?s:currency 1.2?l:amount 1.3?s:crypto_currency 1.3?l:crypto_amount 1.4?#:message
+48e91302|messageActionGiftPremium|!1:flags s:currency l:amount i:days 1.0?s:crypto_currency 1.0?l:crypto_amount 1.1?#:message
+45d5b021|messageActionGiftStars|!1:flags s:currency l:amount l:stars 1.0?s:crypto_currency 1.0?l:crypto_amount 1.1?s:transaction_id
+a8a3c699|messageActionGiftTon|!1:flags s:currency l:amount s:crypto_currency l:crypto_amount 1.0?s:transaction_id
+a80f51e4|messageActionGiveawayLaunch|!1:flags 1.0?l:stars
+87e2f155|messageActionGiveawayResults|!1:flags 1.0?T:stars i:winners_count i:unclaimed_count
+7a0d7f42|messageActionGroupCall|!1:flags #:call 1.0?i:duration
+b3a07661|messageActionGroupCallScheduled|#:call i:schedule_date
+9fbab604|messageActionHistoryClear|
+502f92f7|messageActionInviteToGroupCall|#:call *l:users
+16605e3e|messageActionManagedBotCreated|l:bot_id
+b07ed085|messageActionNewCreatorPending|l:new_creator_id
+3e2793ba|messageActionNoForwardsRequest|!1:flags 1.0?T:expired B:prev_value B:new_value
+bf7d6572|messageActionNoForwardsToggle|B:prev_value B:new_value
+84b88578|messageActionPaidMessagesPrice|!1:flags 1.0?T:broadcast_messages_allowed l:stars
+ac1f1fcd|messageActionPaidMessagesRefunded|i:count l:stars
+41b3e202|messageActionPaymentRefunded|!1:flags #:peer s:currency l:total_amount 1.0?b:payload #:charge
+c624b16e|messageActionPaymentSent|!1:flags 1.2?T:recurring_init 1.3?T:recurring_used s:currency l:total_amount 1.0?s:invoice_slug 1.4?i:subscription_until_date
+ffa00ccc|messageActionPaymentSentMe|!1:flags 1.2?T:recurring_init 1.3?T:recurring_used s:currency l:total_amount b:payload 1.0?#:info 1.1?s:shipping_option_id #:charge 1.4?i:subscription_until_date
+80e11a7f|messageActionPhoneCall|!1:flags 1.2?T:video l:call_id 1.0?#:reason 1.1?i:duration
+94bd38ed|messageActionPinMessage|
+9da1cd6c|messageActionPollAppendAnswer|#:answer
+399674dc|messageActionPollDeleteAnswer|#:answer
+b00c47a2|messageActionPrizeStars|!1:flags 1.0?T:unclaimed l:stars s:transaction_id #:boost_peer i:giveaway_msg_id
+31518e9b|messageActionRequestedPeer|i:button_id *#:peers
+93b31848|messageActionRequestedPeerSentMe|i:button_id *#:peers
+4792929b|messageActionScreenshotTaken|
+d95c6154|messageActionSecureValuesSent|*#:types
+1b287353|messageActionSecureValuesSentMe|*#:values #:credentials
+b91bbd3a|messageActionSetChatTheme|#:theme
+5060a3f4|messageActionSetChatWallPaper|!1:flags 1.0?T:same 1.1?T:for_both #:wallpaper
+3c134d7b|messageActionSetMessagesTTL|!1:flags i:period 1.0?l:auto_setting_from
+ea2c31d3|messageActionStarGift|!1:flags 1.0?T:name_hidden 1.2?T:saved 1.3?T:converted 1.5?T:upgraded 1.9?T:refunded 1.10?T:can_upgrade 1.13?T:prepaid_upgrade 1.16?T:upgrade_separate 1.17?T:auction_acquired #:gift 1.1?#:message 1.4?l:convert_stars 1.5?i:upgrade_msg_id 1.8?l:upgrade_stars 1.11?#:from_id 1.12?#:peer 1.12?l:saved_id 1.14?s:prepaid_upgrade_hash 1.15?i:gift_msg_id 1.18?#:to_id 1.19?i:gift_num
+774278d4|messageActionStarGiftPurchaseOffer|!1:flags 1.0?T:accepted 1.1?T:declined #:gift #:price i:expires_at
+73ada76b|messageActionStarGiftPurchaseOfferDeclined|!1:flags 1.0?T:expired #:gift #:price
+e6c31522|messageActionStarGiftUnique|!1:flags 1.0?T:upgrade 1.1?T:transferred 1.2?T:saved 1.5?T:refunded 1.11?T:prepaid_upgrade 1.13?T:assigned 1.14?T:from_offer 1.16?T:craft #:gift 1.3?i:can_export_at 1.4?l:transfer_stars 1.6?#:from_id 1.7?#:peer 1.7?l:saved_id 1.8?#:resale_amount 1.9?i:can_transfer_at 1.10?i:can_resell_at 1.12?l:drop_original_details_stars 1.15?i:can_craft_at
+2c8f2a25|messageActionSuggestBirthday|#:birthday
+57de635e|messageActionSuggestProfilePhoto|#:photo
+ee7a1596|messageActionSuggestedPostApproval|!1:flags 1.0?T:rejected 1.1?T:balance_too_low 1.2?s:reject_comment 1.3?i:schedule_date 1.4?#:price
+69f916f8|messageActionSuggestedPostRefund|!1:flags 1.0?T:payer_initiated
+95ddcf69|messageActionSuggestedPostSuccess|#:price
+c7edbc83|messageActionTodoAppendTasks|*#:list
+cc7c5c89|messageActionTodoCompletions|*i:completed *i:incompleted
+0d999256|messageActionTopicCreate|!1:flags 1.1?T:title_missing s:title i:icon_color 1.0?l:icon_emoji_id
+c0944820|messageActionTopicEdit|!1:flags 1.0?s:title 1.1?l:icon_emoji_id 1.2?B:closed 1.3?B:hidden
+b4c38cb5|messageActionWebViewDataSent|s:text
+47dd8079|messageActionWebViewDataSentMe|s:text s:data
+90a6ca84|messageEmpty|!1:flags i:id 1.0?#:peer_id
+761e6af4|messageEntityBankCard|i:offset i:length
+f1ccaaac|messageEntityBlockquote|!1:flags 1.0?T:collapsed i:offset i:length
+bd610bc9|messageEntityBold|i:offset i:length
+6cef8ac7|messageEntityBotCommand|i:offset i:length
+4c4e743f|messageEntityCashtag|i:offset i:length
+28a20571|messageEntityCode|i:offset i:length
+c8cf05f8|messageEntityCustomEmoji|i:offset i:length l:document_id
+0652c1c5|messageEntityDiffDelete|i:offset i:length
+71777116|messageEntityDiffInsert|i:offset i:length
+c6c1e5a7|messageEntityDiffReplace|i:offset i:length s:old_text
+64e475c2|messageEntityEmail|i:offset i:length
+904ac7c7|messageEntityFormattedDate|!1:flags 1.0?T:relative 1.1?T:short_time 1.2?T:long_time 1.3?T:short_date 1.4?T:long_date 1.5?T:day_of_week i:offset i:length i:date
+6f635b0d|messageEntityHashtag|i:offset i:length
+826f8b60|messageEntityItalic|i:offset i:length
+fa04579d|messageEntityMention|i:offset i:length
+dc7b1140|messageEntityMentionName|i:offset i:length l:user_id
+9b69e34b|messageEntityPhone|i:offset i:length
+73924be0|messageEntityPre|i:offset i:length s:language
+32ca960f|messageEntitySpoiler|i:offset i:length
+bf0693d4|messageEntityStrike|i:offset i:length
+76a6d327|messageEntityTextUrl|i:offset i:length s:url
+9c4e7e8b|messageEntityUnderline|i:offset i:length
+bb92ba95|messageEntityUnknown|i:offset i:length
+6ed02538|messageEntityUrl|i:offset i:length
+ee479c64|messageExtendedMedia|#:media
+ad628cc8|messageExtendedMediaPreview|!1:flags 1.0?i:w 1.0?i:h 1.1?#:thumb 1.2?i:video_duration
+4e4df4bb|messageFwdHeader|!1:flags 1.7?T:imported 1.11?T:saved_out 1.0?#:from_id 1.5?s:from_name i:date 1.2?i:channel_post 1.3?s:post_author 1.4?#:saved_from_peer 1.4?i:saved_from_msg_id 1.8?#:saved_from_id 1.9?s:saved_from_name 1.10?i:saved_date 1.6?s:psa_type
+70322949|messageMediaContact|s:phone_number s:first_name s:last_name s:vcard l:user_id
+08cbec07|messageMediaDice|!1:flags i:value s:emoticon 1.0?#:game_outcome
+52d8ccd9|messageMediaDocument|!1:flags 1.3?T:nopremium 1.4?T:spoiler 1.6?T:video 1.7?T:round 1.8?T:voice 1.0?#:document 1.5?*#:alt_documents 1.9?#:video_cover 1.10?i:video_timestamp 1.2?i:ttl_seconds
+3ded6320|messageMediaEmpty|
+fdb19008|messageMediaGame|#:game
+56e0d474|messageMediaGeo|#:geo
+b940c666|messageMediaGeoLive|!1:flags #:geo 1.0?i:heading i:period 1.1?i:proximity_notification_radius
+aa073beb|messageMediaGiveaway|!1:flags 1.0?T:only_new_subscribers 1.2?T:winners_are_visible *l:channels 1.1?*s:countries_iso2 1.3?s:prize_description i:quantity 1.4?i:months 1.5?l:stars i:until_date
+ceaa3ea1|messageMediaGiveawayResults|!1:flags 1.0?T:only_new_subscribers 1.2?T:refunded l:channel_id 1.3?i:additional_peers_count i:launch_msg_id i:winners_count i:unclaimed_count *l:winners 1.4?i:months 1.5?l:stars 1.1?s:prize_description i:until_date
+f6a548d3|messageMediaInvoice|!1:flags 1.1?T:shipping_address_requested 1.3?T:test s:title s:description 1.0?#:photo 1.2?i:receipt_msg_id s:currency l:total_amount s:start_param 1.4?#:extended_media
+a8852491|messageMediaPaidMedia|l:stars_amount *#:extended_media
+e216eb63|messageMediaPhoto|!1:flags 1.3?T:spoiler 1.4?T:live_photo 1.0?#:photo 1.2?i:ttl_seconds 1.4?#:video
+773f4e66|messageMediaPoll|!1:flags #:poll #:results 1.0?#:attached_media
+68cb6283|messageMediaStory|!1:flags 1.1?T:via_mention #:peer i:id 1.0?#:story
+8a53b014|messageMediaToDo|!1:flags #:todo 1.0?*#:completions
+9f84f49e|messageMediaUnsupported|
+2ec0533f|messageMediaVenue|#:geo s:title s:address s:provider s:venue_id s:venue_type
+ca5cab89|messageMediaVideoStream|!1:flags 1.0?T:rtmp_stream #:call
+ddf10c3b|messageMediaWebPage|!1:flags 1.0?T:force_large_media 1.1?T:force_small_media 1.3?T:manual 1.4?T:safe #:webpage
+8c79b63c|messagePeerReaction|!1:flags 1.0?T:big 1.1?T:unread 1.2?T:my #:peer_id i:date #:reaction
+0a339f0b|messageReactions|!1:flags 1.0?T:min 1.2?T:can_see_list 1.3?T:reactions_as_tags *#:results 1.1?*#:recent_reactions 1.4?*#:top_reactors
+4ba3a95a|messageReactor|!1:flags 1.0?T:top 1.1?T:my 1.2?T:anonymous 1.3?#:peer_id i:count
+83d60fc2|messageReplies|!1:flags 1.0?T:comments i:replies i:replies_pts 1.1?*#:recent_repliers 1.0?l:channel_id 1.2?i:max_id 1.3?i:read_max_id
+1b97dd66|messageReplyHeader|!1:flags 1.2?T:reply_to_scheduled 1.3?T:forum_topic 1.9?T:quote 1.13?T:reply_to_ephemeral 1.4?i:reply_to_msg_id 1.0?#:reply_to_peer_id 1.5?#:reply_from 1.8?#:reply_media 1.1?i:reply_to_top_id 1.6?s:quote_text 1.7?*#:quote_entities 1.10?i:quote_offset 1.11?i:todo_item_id 1.12?b:poll_option
+0e5af939|messageReplyStoryHeader|#:peer i:story_id
+7a800e0a|messageService|!1:flags 1.1?T:out 1.4?T:mentioned 1.5?T:media_unread 1.9?T:reactions_are_possible 1.13?T:silent 1.14?T:post 1.19?T:legacy i:id 1.8?#:from_id #:peer_id 1.28?#:saved_peer_id 1.3?#:reply_to i:date #:action 1.20?#:reactions 1.25?i:ttl_period
+c776ba4e|messages.channelMessages|!1:flags 1.1?T:inexact i:pts i:count 1.2?i:offset_id_offset *#:messages *#:topics *#:chats *#:users
+15ba6c40|messages.dialogs|*#:dialogs *#:messages *#:chats *#:users
+f0e3e596|messages.dialogsNotModified|i:count
+71e094f3|messages.dialogsSlice|i:count *#:dialogs *#:messages *#:chats *#:users
+da2ad647|messages.emojiGameOutcome|b:seed l:stake_ton_amount l:ton_amount
+1d73e7ea|messages.messages|*#:messages *#:topics *#:chats *#:users
+74535f21|messages.messagesNotModified|i:count
+5f206716|messages.messagesSlice|!1:flags 1.1?T:inexact i:count 1.0?i:next_rate 1.2?i:offset_id_offset 1.3?#:search_flood *#:messages *#:topics *#:chats *#:users
+97e8bebe|notificationSoundDefault|
+830b9ae4|notificationSoundLocal|s:title s:data
+6f0c34df|notificationSoundNone|
+ff6c8049|notificationSoundRingtone|l:id
+98657f0d|page|!1:flags 1.0?T:part 1.1?T:rtl 1.2?T:v2 s:url *#:blocks *#:photos *#:documents 1.3?i:views
+ce0d37b0|pageBlockAnchor|s:name
+804361ea|pageBlockAudio|l:audio_id #:caption
+baafe5e0|pageBlockAuthorDate|#:author i:published_date
+263d7c26|pageBlockBlockquote|#:text #:caption
+ef1751b5|pageBlockChannel|#:channel
+65a0fa4d|pageBlockCollage|*#:items #:caption
+39f23300|pageBlockCover|#:cover
+76768bed|pageBlockDetails|!1:flags 1.0?T:open *#:blocks #:title
+db20b188|pageBlockDivider|
+a8718dc5|pageBlockEmbed|!1:flags 1.0?T:full_width 1.3?T:allow_scrolling 1.1?s:url 1.2?s:html 1.4?l:poster_photo_id 1.5?i:w 1.5?i:h #:caption
+f259a80b|pageBlockEmbedPost|s:url l:webpage_id l:author_photo_id s:author i:date *#:blocks #:caption
+48870999|pageBlockFooter|#:text
+bfd064ec|pageBlockHeader|#:text
+1e148390|pageBlockKicker|#:text
+e4e88011|pageBlockList|*#:items
+a44f3ef6|pageBlockMap|#:geo i:zoom i:w i:h #:caption
+9a8ae1e1|pageBlockOrderedList|*#:items
+467a0766|pageBlockParagraph|#:text
+1759c560|pageBlockPhoto|!1:flags l:photo_id #:caption 1.0?s:url 1.0?l:webpage_id
+c070d93e|pageBlockPreformatted|#:text s:language
+4f4456d3|pageBlockPullquote|#:text #:caption
+16115a96|pageBlockRelatedArticles|#:title *#:articles
+031f9590|pageBlockSlideshow|*#:items #:caption
+f12bb6e1|pageBlockSubheader|#:text
+8ffa9a1f|pageBlockSubtitle|#:text
+bf4dea82|pageBlockTable|!1:flags 1.0?T:bordered 1.1?T:striped #:title *#:rows
+70abc3fd|pageBlockTitle|#:text
+13567e8a|pageBlockUnsupported|
+7c8fe7b6|pageBlockVideo|!1:flags 1.0?T:autoplay 1.1?T:loop l:video_id #:caption
+6f747657|pageCaption|#:text #:credit
+25e073fc|pageListItemBlocks|*#:blocks
+b92fb6cd|pageListItemText|#:text
+98dd8936|pageListOrderedItemBlocks|s:num *#:blocks
+5e068047|pageListOrderedItemText|s:num #:text
+b390dc08|pageRelatedArticle|!1:flags s:url l:webpage_id 1.0?s:title 1.1?s:description 1.2?l:photo_id 1.3?s:author 1.4?i:published_date
+34566b6a|pageTableCell|!1:flags 1.0?T:header 1.3?T:align_center 1.4?T:align_right 1.5?T:valign_middle 1.6?T:valign_bottom 1.7?#:text 1.1?i:colspan 1.2?i:rowspan
+e0c0c5e5|pageTableRow|*#:cells
+ea02c27e|paymentCharge|s:id s:provider_charge_id
+909c3f94|paymentRequestedInfo|!1:flags 1.0?s:name 1.1?s:phone 1.2?s:email 1.3?#:shipping_address
+a2a5371e|peerChannel|l:channel_id
+36c6019a|peerChat|l:chat_id
+b54b5acf|peerColor|!1:flags 1.0?i:color 1.1?l:background_emoji_id
+b9c0639a|peerColorCollectible|!1:flags l:collectible_id l:gift_emoji_id l:background_emoji_id i:accent_color *i:colors 1.0?i:dark_accent_color 1.1?*i:dark_colors
+99622c0c|peerNotifySettings|!1:flags 1.0?B:show_previews 1.1?B:silent 1.2?i:mute_until 1.3?#:ios_sound 1.4?#:android_sound 1.5?#:other_sound 1.6?B:stories_muted 1.7?B:stories_hide_sender 1.8?#:stories_ios_sound 1.9?#:stories_android_sound 1.10?#:stories_other_sound
+59511722|peerUser|l:user_id
+faf7e8c9|phoneCallDiscardReasonBusy|
+e095c1a0|phoneCallDiscardReasonDisconnect|
+57adc690|phoneCallDiscardReasonHangup|
+9fbbf1f7|phoneCallDiscardReasonMigrateConferenceCall|s:slug
+85e42301|phoneCallDiscardReasonMissed|
+fb197a65|photo|!1:flags 1.0?T:has_stickers l:id l:access_hash b:file_reference i:date *#:sizes 1.1?*#:video_sizes i:dc_id
+021e1ad6|photoCachedSize|s:type i:w i:h b:bytes
+2331b22d|photoEmpty|l:id
+d8214d41|photoPathSize|s:type b:bytes
+75c78e60|photoSize|s:type i:w i:h i:size
+0e17e23c|photoSizeEmpty|s:type
+fa3efb95|photoSizeProgressive|s:type i:w i:h *i:sizes
+e0b0bc2e|photoStrippedSize|s:type b:bytes
+966e2dbf|poll|l:id !1:flags 1.0?T:closed 1.1?T:public_voters 1.2?T:multiple_choice 1.3?T:quiz 1.6?T:open_answers 1.7?T:revoting_disabled 1.8?T:shuffle_answers 1.9?T:hide_results_until_close 1.10?T:creator 1.11?T:subscribers_only #:question *#:answers 1.4?i:close_period 1.5?i:close_date 1.12?*s:countries_iso2 l:hash
+4b7d786a|pollAnswer|!1:flags #:text b:option 1.0?#:media 1.1?#:added_by 1.1?i:date
+3645230a|pollAnswerVoters|!1:flags 1.0?T:chosen 1.1?T:correct b:option 1.2?i:voters 1.2?*#:recent_voters
+ba7bb15e|pollResults|!1:flags 1.0?T:min 1.6?T:has_unread_votes 1.7?T:can_view_stats 1.1?*#:results 1.2?i:total_voters 1.3?*#:recent_voters 1.4?s:solution 1.4?*#:solution_entities 1.5?#:solution_media
+1e8caaeb|postAddress|s:street_line1 s:street_line2 s:city s:state s:country_iso2 s:post_code
+65427b82|privacyValueAllowAll|
+21461b5d|privacyValueAllowBots|
+6b134e8e|privacyValueAllowChatParticipants|*l:chats
+f7e8d89b|privacyValueAllowCloseFriends|
+fffe1bac|privacyValueAllowContacts|
+ece9814b|privacyValueAllowPremium|
+b8905fb2|privacyValueAllowUsers|*l:users
+8b73e763|privacyValueDisallowAll|
+f6a5f82f|privacyValueDisallowBots|
+41c87565|privacyValueDisallowChatParticipants|*l:chats
+f888fa1a|privacyValueDisallowContacts|
+e4621141|privacyValueDisallowUsers|*l:users
+a3d1cb80|reactionCount|!1:flags 1.0?i:chosen_order #:reaction i:count
+8935fc73|reactionCustomEmoji|l:document_id
+1b2286b8|reactionEmoji|s:emoticon
+79f5d419|reactionEmpty|
+523da4eb|reactionPaid|
+711d692d|recentStory|!1:flags 1.0?T:live 1.1?i:max_id
+48a30254|replyInlineMarkup|*#:rows
+86b40b08|replyKeyboardForceReply|!1:flags 1.1?T:single_use 1.2?T:selective 1.3?s:placeholder
+a03e5b85|replyKeyboardHide|!1:flags 1.2?T:selective
+85dd99d1|replyKeyboardMarkup|!1:flags 1.0?T:resize 1.1?T:single_use 1.2?T:selective 1.4?T:persistent *#:rows 1.3?s:placeholder
+339bef6c|requestPeerTypeBroadcast|!1:flags 1.0?T:creator 1.3?B:has_username 1.1?#:user_admin_rights 1.2?#:bot_admin_rights
+c9f06e1b|requestPeerTypeChat|!1:flags 1.0?T:creator 1.5?T:bot_participant 1.3?B:has_username 1.4?B:forum 1.1?#:user_admin_rights 1.2?#:bot_admin_rights
+3e81e078|requestPeerTypeCreateBot|!1:flags 1.0?T:bot_managed 1.1?s:suggested_name 1.2?s:suggested_username
+5f3b8a00|requestPeerTypeUser|!1:flags 1.0?B:bot 1.1?B:premium
+8ba403e4|requestedPeerChannel|!1:flags l:channel_id 1.0?s:title 1.1?s:username 1.2?#:photo
+7307544f|requestedPeerChat|!1:flags l:chat_id 1.0?s:title 1.2?#:photo
+d62ff46a|requestedPeerUser|!1:flags l:user_id 1.0?s:first_name 1.0?s:last_name 1.1?s:username 1.2?#:photo
+d072acb4|restrictionReason|s:platform s:reason s:text
+3e0b5b6a|searchPostsFlood|!1:flags 1.0?T:query_is_free i:total_daily i:remains 1.1?i:wait_till l:stars_amount
+33f0ea47|secureCredentialsEncrypted|b:data b:hash b:secret
+8aeabec3|secureData|b:data b:data_hash b:secret
+7d09c27e|secureFile|l:id l:access_hash l:size i:dc_id i:date b:file_hash b:secret
+64199744|secureFileEmpty|
+21ec5a5f|securePlainEmail|s:email
+7d6099dd|securePlainPhone|s:phone
+187fa0ca|secureValue|!1:flags #:type 1.0?#:data 1.1?#:front_side 1.2?#:reverse_side 1.3?#:selfie 1.6?*#:translation 1.4?*#:files 1.5?#:plain_data b:hash
+cbe31e26|secureValueTypeAddress|
+89137c0d|secureValueTypeBankStatement|
+06e425c4|secureValueTypeDriverLicense|
+8e3ca7ee|secureValueTypeEmail|
+a0d0744b|secureValueTypeIdentityCard|
+99a48f23|secureValueTypeInternalPassport|
+3dac6a00|secureValueTypePassport|
+99e3806a|secureValueTypePassportRegistration|
+9d2a81e3|secureValueTypePersonalDetails|
+b320aadb|secureValueTypePhone|
+8b883488|secureValueTypeRentalAgreement|
+ea02ec33|secureValueTypeTemporaryRegistration|
+fc36954e|secureValueTypeUtilityBill|
+313a9547|starGift|!1:flags 1.0?T:limited 1.1?T:sold_out 1.2?T:birthday 1.7?T:require_premium 1.8?T:limited_per_user 1.10?T:peer_color_available 1.11?T:auction l:id #:sticker l:stars 1.0?i:availability_remains 1.0?i:availability_total 1.4?l:availability_resale l:convert_stars 1.1?i:first_sale_date 1.1?i:last_sale_date 1.3?l:upgrade_stars 1.4?l:resell_min_stars 1.5?s:title 1.6?#:released_by 1.8?i:per_user_total 1.8?i:per_user_remains 1.9?i:locked_until_date 1.11?s:auction_slug 1.11?i:gifts_per_round 1.11?i:auction_start_date 1.12?i:upgrade_variants 1.13?#:background
+9f2504e4|starGiftAttributeBackdrop|s:name i:backdrop_id i:center_color i:edge_color i:pattern_color i:text_color #:rarity
+565251e2|starGiftAttributeModel|!1:flags 1.0?T:crafted s:name #:document #:rarity
+e0bff26c|starGiftAttributeOriginalDetails|!1:flags 1.0?#:sender_id #:recipient_id i:date 1.1?#:message
+4e7085ea|starGiftAttributePattern|s:name #:document #:rarity
+36437737|starGiftAttributeRarity|i:permille
+78fbf3a8|starGiftAttributeRarityEpic|
+cef7e7a8|starGiftAttributeRarityLegendary|
+f08d516b|starGiftAttributeRarityRare|
+dbce6389|starGiftAttributeRarityUncommon|
+aff56398|starGiftBackground|i:center_color i:edge_color i:text_color
+85f0a9cd|starGiftUnique|!1:flags 1.6?T:require_premium 1.7?T:resale_ton_only 1.9?T:theme_available 1.14?T:burned 1.15?T:crafted l:id l:gift_id s:title s:slug i:num 1.0?#:owner_id 1.1?s:owner_name 1.2?s:owner_address *#:attributes i:availability_issued i:availability_total 1.3?s:gift_address 1.4?*#:resell_amount 1.5?#:released_by 1.8?l:value_amount 1.8?s:value_currency 1.8?l:value_usd_amount 1.10?#:theme_peer 1.11?#:peer_color 1.12?#:host_id 1.13?i:offer_min_stars 1.16?i:craft_chance_permille
+bbb6b4a3|starsAmount|l:amount i:nanos
+74aee3e0|starsTonAmount|l:amount
+cae1aadf|storage.fileGif|
+007efe0e|storage.fileJpeg|
+4b09ebbc|storage.fileMov|
+528a0677|storage.fileMp3|
+b3cea0e4|storage.fileMp4|
+40bc6f52|storage.filePartial|
+ae1e508d|storage.filePdf|
+0a4f63c0|storage.filePng|
+aa963b05|storage.fileUnknown|
+1081464c|storage.fileWebp|
+b826e150|storyFwdHeader|!1:flags 1.3?T:modified 1.0?#:from 1.1?s:from_name 1.2?i:story_id
+16a4b93c|storyItem|!1:flags 1.5?T:pinned 1.7?T:public 1.8?T:close_friends 1.9?T:min 1.10?T:noforwards 1.11?T:edited 1.12?T:contacts 1.13?T:selected_contacts 1.16?T:out i:id i:date 1.18?#:from_id 1.17?#:fwd_from i:expire_date 1.0?s:caption 1.1?*#:entities #:media 1.14?*#:media_areas 1.2?*#:privacy 1.3?#:views 1.15?#:sent_reaction 1.19?*i:albums 1.20?#:music
+51e6ee4f|storyItemDeleted|i:id
+ffadc913|storyItemSkipped|!1:flags 1.8?T:close_friends 1.9?T:live i:id i:date i:expire_date
+8d595cd6|storyViews|!1:flags 1.1?T:has_viewers i:views_count 1.2?i:forwards_count 1.3?*#:reactions 1.4?i:reactions_count 1.0?*l:recent_viewers
+0e8e37e5|suggestedPost|!1:flags 1.1?T:accepted 1.2?T:rejected 1.3?#:price 1.0?i:schedule_date
+35553762|textAnchor|#:text s:name
+6724abc4|textBold|#:text
+7e6260d7|textConcat|*#:texts
+de5a0dd6|textEmail|#:text s:email
+dc3d824f|textEmpty|
+6c3f19b9|textFixed|#:text
+081ccf4f|textImage|l:document_id i:w i:h
+d912a59c|textItalic|#:text
+034b8621|textMarked|#:text
+1ccb966a|textPhone|#:text s:phone
+744694e0|textPlain|s:text
+9bf8bb95|textStrike|#:text
+ed6a8504|textSubscript|#:text
+c7fb5e01|textSuperscript|#:text
+c12622c4|textUnderline|#:text
+3c2884c1|textUrl|#:text s:url l:webpage_id
+751f3146|textWithEntities|s:text *#:entities
+fa58b6d4|themeSettings|!1:flags 1.2?T:message_colors_animated #:base_theme i:accent_color 1.3?i:outbox_accent_color 1.0?*i:message_colors 1.1?#:wallpaper
+221bb5e4|todoCompletion|i:id #:completed_by i:date
+cba9a52f|todoItem|i:id #:title
+49b92a26|todoList|!1:flags 1.0?T:others_can_append 1.1?T:others_can_complete #:title *#:list
+096a18d5|upload.file|#:type i:mtime b:bytes
+f18cda44|upload.fileCdnRedirect|i:dc_id b:file_token b:encryption_key b:encryption_iv *#:file_hashes
+31774388|user|!1:flags 1.10?T:self 1.11?T:contact 1.12?T:mutual_contact 1.13?T:deleted 1.14?T:bot 1.15?T:bot_chat_history 1.16?T:bot_nochats 1.17?T:verified 1.18?T:restricted 1.20?T:min 1.21?T:bot_inline_geo 1.23?T:support 1.24?T:scam 1.25?T:apply_min_photo 1.26?T:fake 1.27?T:bot_attach_menu 1.28?T:premium 1.29?T:attach_menu_enabled !2:flags2 2.1?T:bot_can_edit 2.2?T:close_friend 2.3?T:stories_hidden 2.4?T:stories_unavailable 2.10?T:contact_require_premium 2.11?T:bot_business 2.13?T:bot_has_main_app 2.16?T:bot_forum_view 2.17?T:bot_forum_can_manage_topics 2.18?T:bot_can_manage_bots 2.19?T:bot_guestchat l:id 1.0?l:access_hash 1.1?s:first_name 1.2?s:last_name 1.3?s:username 1.4?s:phone 1.5?#:photo 1.6?#:status 1.14?i:bot_info_version 1.18?*#:restriction_reason 1.19?s:bot_inline_placeholder 1.22?s:lang_code 1.30?#:emoji_status 2.0?*#:usernames 2.5?#:stories_max_id 2.8?#:color 2.9?#:profile_color 2.12?i:bot_active_users 2.14?l:bot_verification_icon 2.15?l:send_paid_messages_stars
+d3bc4b7a|userEmpty|l:id
+82d1f706|userProfilePhoto|!1:flags 1.0?T:has_video 1.2?T:personal l:photo_id 1.1?b:stripped_thumb i:dc_id
+4f11bae1|userProfilePhotoEmpty|
+09d05049|userStatusEmpty|
+65899777|userStatusLastMonth|!1:flags 1.0?T:by_me
+541a1d1a|userStatusLastWeek|!1:flags 1.0?T:by_me
+008c703f|userStatusOffline|i:was_online
+edb93949|userStatusOnline|i:expires
+7b197dc8|userStatusRecently|!1:flags 1.0?T:by_me
+b4073647|username|!1:flags 1.0?T:editable 1.1?T:active s:username
+de33b094|videoSize|!1:flags s:type i:w i:h i:size 1.0?d:video_start_ts
+f85c413c|videoSizeEmojiMarkup|l:emoji_id *i:background_colors
+0da082fe|videoSizeStickerMarkup|#:stickerset l:sticker_id *i:background_colors
+a437c3ed|wallPaper|l:id !1:flags 1.0?T:creator 1.1?T:default 1.3?T:pattern 1.4?T:dark l:access_hash s:slug #:document 1.2?#:settings
+e0804116|wallPaperNoFile|l:id !1:flags 1.1?T:default 1.4?T:dark 1.2?#:settings
+372efcd0|wallPaperSettings|!1:flags 1.1?T:blur 1.2?T:motion 1.0?i:background_color 1.4?i:second_background_color 1.5?i:third_background_color 1.6?i:fourth_background_color 1.3?i:intensity 1.4?i:rotation 1.7?s:emoticon
+1c570ed1|webDocument|s:url l:access_hash i:size s:mime_type *#:attributes
+f9c8bcc6|webDocumentNoProxy|s:url i:size s:mime_type *#:attributes
+e89c45b2|webPage|!1:flags 1.13?T:has_large_media 1.14?T:video_cover_photo l:id s:url s:display_url i:hash 1.0?s:type 1.1?s:site_name 1.2?s:title 1.3?s:description 1.4?#:photo 1.5?s:embed_url 1.5?s:embed_type 1.6?i:embed_width 1.6?i:embed_height 1.7?i:duration 1.8?s:author 1.9?#:document 1.10?#:cached_page 1.12?*#:attributes
+7781fe18|webPageAttributeAiComposeTone|l:emoji_id
+01c641c2|webPageAttributeStarGiftAuction|#:gift i:end_date
+31cad303|webPageAttributeStarGiftCollection|*#:icons
+50cc03d3|webPageAttributeStickerSet|!1:flags 1.0?T:emojis 1.1?T:text_color *#:stickers
+2e94c3e7|webPageAttributeStory|!1:flags #:peer i:id 1.0?#:story
+54b56617|webPageAttributeTheme|!1:flags 1.0?*#:documents 1.1?#:settings
+cf6f6db8|webPageAttributeUniqueStarGift|#:gift
+211a1788|webPageEmpty|!1:flags l:id 1.0?s:url
+7311ca11|webPageNotModified|!1:flags 1.0?i:cached_page_views
+b0d13e47|webPagePending|!1:flags l:id 1.0?s:url i:date

@@ -28,6 +28,13 @@ public sealed class ConnectionPool : IAsyncDisposable
     {
         _opt.ApiId = settings.ApiId;
         _opt.ApiHash = settings.ApiHash;
+        _opt.ProxyMode = settings.ProxyMode;
+        _opt.ProxyKind = settings.ProxyKind;
+        _opt.ProxyHost = settings.ProxyHost;
+        _opt.ProxyPort = settings.ProxyPort;
+        _opt.ProxyUsername = settings.ProxyUsername;
+        _opt.ProxyPassword = settings.ProxyPassword;
+        _opt.ProxyVlessLink = settings.ProxyVlessLink;
     }
 
     private static string KeyOf(string accountId, int dcId) => accountId + ":" + dcId;

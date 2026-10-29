@@ -76,6 +76,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty] public partial int ImportDcIndex { get; set; } = 4;
     [ObservableProperty] public partial string ImportStatus { get; set; } = "";
     [ObservableProperty] public partial string ClearAccountsLabel { get; set; } = "清空全部";
+    [ObservableProperty] public partial string ProxyStatus { get; set; } = "";
     [ObservableProperty] public partial bool Busy { get; set; }
 
     // 会话
@@ -538,9 +539,17 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     // ------------------------------------------------------------------ 设置
 
     [RelayCommand]
-    private void SaveSettings()
+    private async Task SaveSettingsAsync()
     {
+        var before = SettingsStore.Current;
         var settings = Settings.ToSettings();
+        bool proxyChanged = before.ProxyMode != settings.ProxyMode
+                            || before.ProxyKind != settings.ProxyKind
+                            || before.ProxyHost != settings.ProxyHost
+                            || before.ProxyPort != settings.ProxyPort
+                            || before.ProxyUsername != settings.ProxyUsername
+                            || before.ProxyPassword != settings.ProxyPassword;
+
         SettingsStore.Save(settings);
         _engine.Pool.ApplySettings(settings);
         AppendLog($"设置已保存：{settings.AccountCount} 个账号 × 每个 {settings.ConcurrencyPerAccount} 并发，" +
@@ -548,6 +557,71 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         StatusBar = "设置已保存";
         Settings.LoadFrom(settings);
         RefreshAccounts();
+
+        // 代理变了，已有连接还是走老路，必须重建
+        if (proxyChanged && _engine.Session == SessionState.Ready)
+        {
+            AppendLog("代理设置变了，正在用新代理重建连接…");
+            await _engine.StopSessionAsync();
+            await StartSessionCoreAsync();
+        }
+    }
+
+    /// <summary>
+    /// 用当前表单里的代理设置做一次**真实**连通测试：连 DC2 → DH 握手 → help.getConfig。
+    /// 只测 TCP 隧道是不够的（VLESS 下隧道通了但服务端连不到目标也会"成功"）。
+    /// </summary>
+    [RelayCommand]
+    private async Task TestProxyAsync()
+    {
+        if (Busy) return;
+        Busy = true;
+        ProxyStatus = "测试中…（握手约需几秒）";
+        try
+        {
+            var s = Settings.ToSettings();
+            // 走和真实连接完全相同的解析路径，免得测试和实际用的不是同一份配置
+            var opt = new MtpClientOptions
+            {
+                ProxyMode = s.ProxyMode,
+                ProxyKind = s.ProxyKind,
+                ProxyHost = s.ProxyHost,
+                ProxyPort = s.ProxyPort,
+                ProxyUsername = s.ProxyUsername,
+                ProxyPassword = s.ProxyPassword,
+                ProxyVlessLink = s.ProxyVlessLink,
+            };
+            var proxy = opt.ResolveProxy();
+            if (proxy == null)
+            {
+                ProxyStatus = s.ProxyMode == ProxyMode.System
+                    ? "系统没有启用代理，实际会走直连"
+                    : "当前是直连模式，不用测代理";
+                return;
+            }
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            await using var conn = await MtpConnection.HandshakeAsync(2, opt, cts.Token);
+            var cfg = await MtpApi.GetConfigAsync(conn, cts.Token);
+            sw.Stop();
+            ProxyStatus = $"✓ {proxy.Display} 可用（DC2 握手 + getConfig 共 {sw.ElapsedMilliseconds} ms，{cfg.Name}）";
+            AppendLog("代理测试通过：" + ProxyStatus);
+        }
+        catch (OperationCanceledException)
+        {
+            ProxyStatus = "✗ 30 秒内没有完成握手 —— 代理不通，或它连不到 Telegram DC";
+            AppendLog("代理测试超时：" + ProxyStatus);
+        }
+        catch (Exception ex)
+        {
+            ProxyStatus = "✗ " + ex.Message;
+            AppendLog("代理测试失败：" + ex.Message);
+        }
+        finally
+        {
+            Busy = false;
+        }
     }
 
     [RelayCommand]

@@ -289,6 +289,70 @@
 
                                 <Border Height="1" Background="#E4E7EC" />
 
+                                <TextBlock Text="网络代理" Classes="h2" />
+                                <TextBlock Classes="dim" TextWrapping="Wrap"
+                                           Text="Telegram 走 TCP 443。直连连不上时必须配代理；HTTP 代理需要支持 CONNECT。改完点「保存设置」会自动用新代理重连。" />
+                                <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="10">
+                                    <TextBlock Text="代理模式" Classes="dim" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Column="1" SelectedIndex="{Binding Settings.ProxyModeIndex}">
+                                        <ComboBoxItem>不使用代理（直连）</ComboBoxItem>
+                                        <ComboBoxItem>使用代理（手动配置）</ComboBoxItem>
+                                        <ComboBoxItem>使用系统代理</ComboBoxItem>
+                                    </ComboBox>
+
+                                    <TextBlock Grid.Row="1" Text="代理类型" Classes="dim" VerticalAlignment="Center" />
+                                    <ComboBox Grid.Row="1" Grid.Column="1" SelectedIndex="{Binding Settings.ProxyKindIndex}"
+                                              IsEnabled="{Binding Settings.ProxyManualEnabled}">
+                                        <ComboBoxItem>SOCKS5</ComboBoxItem>
+                                        <ComboBoxItem>HTTP (CONNECT)</ComboBoxItem>
+                                        <ComboBoxItem>VLESS（分享链接）</ComboBoxItem>
+                                    </ComboBox>
+
+                                    <!-- SOCKS5 / HTTP：地址、端口、认证 -->
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="10"
+                                                IsVisible="{Binding Settings.ProxyEndpointVisible}">
+                                        <Grid ColumnDefinitions="130,*">
+                                            <TextBlock Text="地址 / 端口" Classes="dim" VerticalAlignment="Center" />
+                                            <Grid Grid.Column="1" ColumnDefinitions="*,Auto,Auto">
+                                                <TextBox Text="{Binding Settings.ProxyHost}" FontFamily="Consolas"
+                                                         PlaceholderText="127.0.0.1" />
+                                                <TextBlock Grid.Column="1" Text=":" Margin="6,0"
+                                                           VerticalAlignment="Center" Classes="dim" />
+                                                <NumericUpDown Grid.Column="2" Width="120" Minimum="1" Maximum="65535"
+                                                               Increment="1" FormatString="0"
+                                                               Value="{Binding Settings.ProxyPort}" />
+                                            </Grid>
+                                        </Grid>
+                                        <Grid ColumnDefinitions="130,*">
+                                            <TextBlock Text="用户名 / 密码" Classes="dim" VerticalAlignment="Center" />
+                                            <Grid Grid.Column="1" ColumnDefinitions="*,*" ColumnSpacing="8">
+                                                <TextBox Text="{Binding Settings.ProxyUser}" FontFamily="Consolas"
+                                                         PlaceholderText="可留空" />
+                                                <TextBox Grid.Column="1" Text="{Binding Settings.ProxyPassword}"
+                                                         PasswordChar="*" PlaceholderText="可留空" />
+                                            </Grid>
+                                        </Grid>
+                                    </StackPanel>
+
+                                    <!-- VLESS：分享链接 -->
+                                    <StackPanel Grid.Row="2" Grid.ColumnSpan="2" Spacing="6"
+                                                IsVisible="{Binding Settings.ProxyVlessVisible}">
+                                        <TextBlock Text="VLESS 分享链接" Classes="dim" />
+                                        <TextBox Text="{Binding Settings.ProxyVlessLink}" FontFamily="Consolas"
+                                                 AcceptsReturn="True" Height="72" TextWrapping="Wrap"
+                                                 PlaceholderText="vless://uuid@host:443?encryption=none&amp;security=tls&amp;sni=...&amp;type=ws&amp;host=...&amp;path=%2Fxxx#tag" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="{Binding Settings.ProxyHint}" Classes="dim" Foreground="#2563EB"
+                                           TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="测试代理" Command="{Binding TestProxyCommand}" />
+                                    <TextBlock Text="{Binding ProxyStatus}" Classes="dim" VerticalAlignment="Center"
+                                               TextWrapping="Wrap" MaxWidth="300" />
+                                </StackPanel>
+
+                                <Border Height="1" Background="#E4E7EC" />
+
                                 <TextBlock Text="api_id / api_hash" Classes="h2" />
                                 <TextBlock Classes="dim" TextWrapping="Wrap"
                                            Text="auth key 本身不绑定 api_id，但每条连接都要带一个有效的 api_id 做 initConnection。默认用 Telegram Desktop 的，一般不用改。" />

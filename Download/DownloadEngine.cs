@@ -166,17 +166,27 @@ public sealed class DownloadEngine : IAsyncDisposable
                 throw new NeedAuthKeyException(null,
                     "还没有导入任何账号：请到右侧「账号」页导入一条 auth key（导入时会自动连接验证）");
 
+            // 并行验证，并且给个总超时：代理坏掉时不要一个个卡 60 秒
             int ok = 0;
-            foreach (var acc in accounts)
+            using (var verifyCts = CancellationTokenSource.CreateLinkedTokenSource(token))
             {
-                try
+                verifyCts.CancelAfter(TimeSpan.FromSeconds(25));
+                var verifyTasks = accounts.Select(async acc =>
                 {
-                    await AuthKeyManager.VerifyAsync(_pool, acc, progress, token).ConfigureAwait(false);
-                    ok++;
-                }
-                catch (Exception ex)
+                    try
+                    {
+                        await AuthKeyManager.VerifyAsync(_pool, acc, progress, verifyCts.Token).ConfigureAwait(false);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Emit($"账号「{acc.Title}」验证失败：{ex.Message}");
+                        return false;
+                    }
+                }).ToList();
+                foreach (var t in await Task.WhenAll(verifyTasks).ConfigureAwait(false))
                 {
-                    Emit($"账号「{acc.Title}」验证失败：{ex.Message}");
+                    if (t) ok++;
                 }
             }
             if (ok == 0)

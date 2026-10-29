@@ -23,6 +23,19 @@ public sealed class MtpClientOptions
     public string LangCode { get; set; } = "zh";
     public int Layer { get; set; } = 225;
 
+    // ---- 代理 ----
+    public ProxyMode ProxyMode { get; set; } = ProxyMode.None;
+    public ProxyKind ProxyKind { get; set; } = ProxyKind.Socks5;
+    public string ProxyHost { get; set; } = "127.0.0.1";
+    public int ProxyPort { get; set; } = 1080;
+    public string ProxyUsername { get; set; } = "";
+    public string ProxyPassword { get; set; } = "";
+    public string ProxyVlessLink { get; set; } = "";
+
+    /// <summary>按当前设置解析出实际要用的代理（系统代理每次现读注册表）。</summary>
+    public ProxyConfig? ResolveProxy() =>
+        ProxyResolver.Resolve(ProxyMode, ProxyKind, ProxyHost, ProxyPort, ProxyUsername, ProxyPassword, ProxyVlessLink);
+
     public MtpClientOptions Clone() => (MtpClientOptions)MemberwiseClone();
 }
 
@@ -46,6 +59,9 @@ public sealed class MtpConnection : IAsyncDisposable
     private long _salt;
     private long _timeOffset;
     private long _lastMsgId;
+    /// <summary>单个 RPC 的等待上限（秒）。</summary>
+    private const int RpcTimeoutSeconds = 60;
+
     private int _seqNo;
     private int _badMsgCount;
     private readonly string _sid;
@@ -79,7 +95,7 @@ public sealed class MtpConnection : IAsyncDisposable
     public static async Task<MtpConnection> ConnectWithKeyAsync(int dcId, AuthKey key, long timeOffset,
         MtpClientOptions opt, CancellationToken ct)
     {
-        var transport = await ConnectTransportAsync(dcId, ct).ConfigureAwait(false);
+        var transport = await ConnectTransportAsync(dcId, opt, ct).ConfigureAwait(false);
         var conn = new MtpConnection(transport, key, dcId, timeOffset, opt);
         conn.Start();
         return conn;
@@ -98,7 +114,8 @@ public sealed class MtpConnection : IAsyncDisposable
                 MtpTransport? transport = null;
                 try
                 {
-                    transport = await MtpTransport.ConnectAsync(ip, DcOptions.Port, TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+                    transport = await MtpTransport.ConnectAsync(ip, DcOptions.Port, TimeSpan.FromSeconds(15),
+                        opt.ResolveProxy(), ct).ConfigureAwait(false);
                     var hs = await DhHandshake.RunAsync(transport, ct).ConfigureAwait(false);
                     DcIpMemory.Remember(dcId, transport.RemoteIp);
                     var conn = new MtpConnection(transport, hs.Key, dcId, hs.TimeOffsetSeconds, opt);
@@ -116,15 +133,16 @@ public sealed class MtpConnection : IAsyncDisposable
         throw new MtpException($"DC{dcId} 握手失败：{last?.Message}", last ?? new Exception());
     }
 
-    private static async Task<MtpTransport> ConnectTransportAsync(int dcId, CancellationToken ct)
+    private static async Task<MtpTransport> ConnectTransportAsync(int dcId, MtpClientOptions opt, CancellationToken ct)
     {
         Exception? last = null;
+        var proxy = opt.ResolveProxy();
         // 上次连通的 IP 排最前，省得每次挨个试
         foreach (var ip in DcIpMemory.Candidates(dcId))
         {
             try
             {
-                return await MtpTransport.ConnectAsync(ip, DcOptions.Port, TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
+                return await MtpTransport.ConnectAsync(ip, DcOptions.Port, TimeSpan.FromSeconds(15), proxy, ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
@@ -254,8 +272,19 @@ public sealed class MtpConnection : IAsyncDisposable
             long msgId = sent.MsgId;
             try
             {
-                using var reg = ct.Register(static s => ((TaskCompletionSource<byte[]>)s!).TrySetCanceled(), tcs);
-                var result = await tcs.Task.ConfigureAwait(false);
+                // 加个上限：代理坏掉时不能无限等（否则"启动连接"会一直转圈）
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeoutCts.CancelAfter(TimeSpan.FromSeconds(RpcTimeoutSeconds));
+                using var reg = timeoutCts.Token.Register(static s => ((TaskCompletionSource<byte[]>)s!).TrySetCanceled(), tcs);
+                byte[] result;
+                try
+                {
+                    result = await tcs.Task.ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    throw new MtpException($"请求超时（{RpcTimeoutSeconds} 秒没有响应）—— 检查代理是否能连通");
+                }
                 _initSent = true;
                 // 第一次真的收到响应才算"这个 IP 可用"
                 DcIpMemory.Remember(DcId, _t.RemoteIp);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using tgdl.Mtproto;
 
 namespace tgdl.Storage;
 
@@ -29,6 +30,16 @@ public sealed class AppSettings
 
     /// <summary>文件下载完成后是否自动打开所在文件夹。</summary>
     public bool OpenFolderWhenDone { get; set; }
+
+    // ---- 代理 ----
+    public ProxyMode ProxyMode { get; set; } = ProxyMode.None;
+    public ProxyKind ProxyKind { get; set; } = ProxyKind.Socks5;
+    public string ProxyHost { get; set; } = "127.0.0.1";
+    public int ProxyPort { get; set; } = 1080;
+    public string ProxyUsername { get; set; } = "";
+    public string ProxyPassword { get; set; } = "";
+    /// <summary>VLESS 分享链接（ProxyKind=Vless 时用）。</summary>
+    public string ProxyVlessLink { get; set; } = "";
 
     [JsonIgnore]
     public string EffectiveDownloadDir =>

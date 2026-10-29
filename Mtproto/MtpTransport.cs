@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -16,11 +17,11 @@ public sealed class MtpTransport : IAsyncDisposable
     private const uint IntermediateTag = 0xEEEEEEEE;
     private const int MaxFrame = 64 * 1024 * 1024;
 
-    private readonly Socket _socket;
-    private readonly NetworkStream _stream;
+    private readonly Socket? _socket;
+    private readonly Stream _stream;
     private int _disposed;
 
-    private MtpTransport(Socket socket, NetworkStream stream)
+    private MtpTransport(Socket? socket, Stream stream)
     {
         _socket = socket;
         _stream = stream;
@@ -30,17 +31,39 @@ public sealed class MtpTransport : IAsyncDisposable
 
     public string RemoteIp { get; private set; } = "";
 
-    public static async Task<MtpTransport> ConnectAsync(string ip, int port, TimeSpan timeout, CancellationToken ct)
+    /// <summary>连接目标 DC；<paramref name="proxy"/> 不为空时先连代理再打通隧道。</summary>
+    public static async Task<MtpTransport> ConnectAsync(string ip, int port, TimeSpan timeout, ProxyConfig? proxy,
+        CancellationToken ct)
     {
         var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
         {
             NoDelay = true,
         };
+        // VLESS：TCP → (TLS) → (WS) → VLESS 头，交给专门的连接器
+        if (proxy?.Kind == ProxyKind.Vless && proxy.Vless != null)
+        {
+            var vs = await VlessConnector.ConnectAsync(proxy.Vless, ip, port, timeout, ct).ConfigureAwait(false);
+            var vt = new MtpTransport(null, vs) { Remote = $"{ip}:{port}", RemoteIp = ip };
+            var vtag = new byte[4];
+            BinaryPrimitives.WriteUInt32LittleEndian(vtag, IntermediateTag);
+            await vs.WriteAsync(vtag, ct).ConfigureAwait(false);
+            await vs.FlushAsync(ct).ConfigureAwait(false);
+            return vt;
+        }
+
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
         linked.CancelAfter(timeout);
         try
         {
-            await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(ip), port), linked.Token).ConfigureAwait(false);
+            if (proxy == null)
+            {
+                await socket.ConnectAsync(new IPEndPoint(IPAddress.Parse(ip), port), linked.Token).ConfigureAwait(false);
+            }
+            else
+            {
+                var endpoint = await ResolveProxyEndpointAsync(proxy, linked.Token).ConfigureAwait(false);
+                await socket.ConnectAsync(endpoint, linked.Token).ConfigureAwait(false);
+            }
         }
         catch
         {
@@ -48,6 +71,9 @@ public sealed class MtpTransport : IAsyncDisposable
             throw;
         }
         var stream = new NetworkStream(socket, ownsSocket: true);
+        if (proxy != null)
+            await ProxyTunnel.EstablishAsync(stream, ip, port, proxy, ct).ConfigureAwait(false);
+
         var t = new MtpTransport(socket, stream) { Remote = $"{ip}:{port}", RemoteIp = ip };
         var tag = new byte[4];
         BinaryPrimitives.WriteUInt32LittleEndian(tag, IntermediateTag);
@@ -78,6 +104,25 @@ public sealed class MtpTransport : IAsyncDisposable
         await _stream.ReadExactlyAsync(buf, ct).ConfigureAwait(false);
         if (MtpLog.Verbose) MtpLog.Write($"<- payload {Convert.ToHexString(buf.AsSpan(0, Math.Min(len, 48)))}");
         return buf;
+    }
+
+    private static async Task<IPEndPoint> ResolveProxyEndpointAsync(ProxyConfig proxy, CancellationToken ct)
+    {
+        if (IPAddress.TryParse(proxy.Host, out var ip)) return new IPEndPoint(ip, proxy.Port);
+        var addrs = await Dns.GetHostAddressesAsync(proxy.Host, ct).ConfigureAwait(false);
+        foreach (var a in addrs)
+        {
+            if (a.AddressFamily == AddressFamily.InterNetwork) return new IPEndPoint(a, proxy.Port);
+        }
+        if (addrs.Length > 0) return new IPEndPoint(addrs[0], proxy.Port);
+        throw new MtpException($"解析代理地址失败：{proxy.Host}");
+    }
+
+    /// <summary>只验证"能不能通过当前代理连上某个 DC"（不做 DH）。</summary>
+    public static async Task TestAsync(string ip, int port, ProxyConfig? proxy, CancellationToken ct)
+    {
+        var t = await ConnectAsync(ip, port, TimeSpan.FromSeconds(10), proxy, ct).ConfigureAwait(false);
+        await t.DisposeAsync().ConfigureAwait(false);
     }
 
     public ValueTask DisposeAsync()

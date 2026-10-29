@@ -12,7 +12,7 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        if (args.Length > 0 && (args[0] == "--selftest" || args[0] == "--probe" || args[0] == "--netdebug" || args[0] == "--cryptotest" || args[0] == "--prototest" || args[0] == "--teststore" || args[0] == "--sessiontest" || args[0] == "--dl"))
+        if (args.Length > 0 && (args[0] == "--selftest" || args[0] == "--probe" || args[0] == "--netdebug" || args[0] == "--cryptotest" || args[0] == "--prototest" || args[0] == "--teststore" || args[0] == "--sessiontest" || args[0] == "--dl" || args[0] == "--proxytest"))
         {
             SelfTest.Run(args);
             return;
@@ -39,6 +39,15 @@ sealed class Program
 /// </summary>
 internal static class SelfTest
 {
+    private static readonly object LogGate = new();
+    private static TextWriter? _log;
+
+    /// <summary>线程安全的日志（多个账号并行验证时会同时写）。</summary>
+    private static void L(string text)
+    {
+        lock (LogGate) _log?.WriteLine(text);
+    }
+
     public static void Run(string[] args)
     {
         var dir = Path.Combine(AppContext.BaseDirectory, "data");
@@ -47,7 +56,8 @@ internal static class SelfTest
         using var log = new StreamWriter(logPath, false, new UTF8Encoding(false)) { AutoFlush = true };
         Console.SetOut(log);
         Console.SetError(log);
-        MtpLog.Sink = m => log.WriteLine("  [mtp] " + m);
+        _log = log;
+        MtpLog.Sink = m => L("  [mtp] " + m);
         MtpLog.Verbose = Environment.GetEnvironmentVariable("TGDL_VERBOSE") == "1";
 
         try
@@ -60,6 +70,7 @@ internal static class SelfTest
                 "--teststore" => StoreTestAsync(log),
                 "--sessiontest" => SessionTestAsync(log),
                 "--dl" => DownloadTestAsync(args, log),
+                "--proxytest" => ProxyTestAsync(args, log),
                 _ => BasicAsync(log),
             };
             task.GetAwaiter().GetResult();
@@ -180,6 +191,75 @@ internal static class SelfTest
     }
 
     /// <summary>验证「启动/停止」的状态机：没有 key 时必须给出可操作的提示。</summary>
+    /// <summary>代理测试：--proxytest &lt;host:port&gt; [socks5|http] [dc]</summary>
+    private static async System.Threading.Tasks.Task ProxyTestAsync(string[] args, TextWriter log)
+    {
+        string addr = args.Length > 1 ? args[1] : "127.0.0.1:50000";
+        var kind = args.Length > 2
+            ? (args[2].Equals("http", StringComparison.OrdinalIgnoreCase) ? tgdl.Mtproto.ProxyKind.Http
+                : args[2].Equals("vless", StringComparison.OrdinalIgnoreCase) ? tgdl.Mtproto.ProxyKind.Vless
+                : tgdl.Mtproto.ProxyKind.Socks5)
+            : tgdl.Mtproto.ProxyKind.Socks5;
+        int dc = args.Length > 3 && int.TryParse(args[3], out var d) ? d : 2;
+
+        tgdl.Mtproto.ProxyConfig proxy;
+        string host = "127.0.0.1";
+        int port = 1080;
+        if (kind == tgdl.Mtproto.ProxyKind.Vless)
+        {
+            var vless = tgdl.Mtproto.VlessConfig.Parse(addr);
+            proxy = new tgdl.Mtproto.ProxyConfig(tgdl.Mtproto.ProxyKind.Vless, vless.Server, vless.Port, null, null, vless);
+        }
+        else
+        {
+            int colon = addr.LastIndexOf(':');
+            host = colon > 0 ? addr.Substring(0, colon) : addr;
+            port = colon > 0 && int.TryParse(addr.AsSpan(colon + 1), out var p) ? p : 1080;
+            proxy = new tgdl.Mtproto.ProxyConfig(kind, host, port);
+        }
+        log.WriteLine($"代理：{proxy.Display}");
+
+        var ip = tgdl.Mtproto.DcOptions.Addresses(dc).FirstOrDefault() ?? "149.154.167.41";
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        try
+        {
+            await tgdl.Mtproto.MtpTransport.TestAsync(ip, 443, proxy, default);
+            log.WriteLine($"TCP 隧道建立成功（{ip}:443，{sw.ElapsedMilliseconds} ms）");
+        }
+        catch (Exception ex)
+        {
+            log.WriteLine($"隧道失败：{ex.GetType().Name}: {ex.Message}");
+            return;
+        }
+
+        sw.Restart();
+        var opt = new tgdl.Mtproto.MtpClientOptions
+        {
+            ProxyMode = tgdl.Mtproto.ProxyMode.Manual,
+            ProxyKind = kind,
+            ProxyHost = host,
+            ProxyPort = port,
+            ProxyVlessLink = kind == tgdl.Mtproto.ProxyKind.Vless ? addr : "",
+        };
+        try
+        {
+            using var dhCts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(60));
+            await using var conn = await tgdl.Mtproto.MtpConnection.HandshakeAsync(dc, opt, dhCts.Token);
+            log.WriteLine($"DC{dc} DH 成功（{sw.ElapsedMilliseconds} ms）auth_key=0x{conn.Key.Id:x16}");
+            sw.Restart();
+            var cfg = await tgdl.Mtproto.MtpApi.GetConfigAsync(conn, dhCts.Token);
+            log.WriteLine($"help.getConfig 成功（{sw.ElapsedMilliseconds} ms）-> {cfg.Name}");
+        }
+        catch (OperationCanceledException)
+        {
+            log.WriteLine("DH 超时（60 秒没有任何回包）—— 服务端大概率连不到目标 DC");
+        }
+        catch (Exception ex)
+        {
+            log.WriteLine($"DH/请求失败：{ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
     /// <summary>命令行下载：--dl &lt;chat:mid&gt; [最多下载多少 MiB]，用来验证多账号链路。</summary>
     private static async System.Threading.Tasks.Task DownloadTestAsync(string[] args, TextWriter log)
     {
@@ -196,7 +276,7 @@ internal static class SelfTest
         int maxMiB = args.Length > 2 && int.TryParse(args[2], out var m) ? m : 0;
 
         await using var engine = new tgdl.Download.DownloadEngine();
-        engine.Log += msg => log.WriteLine("  " + msg);
+        engine.Log += msg => L("  " + msg);
 
         var sw = System.Diagnostics.Stopwatch.StartNew();
         var lastLog = 0L;
@@ -205,7 +285,7 @@ internal static class SelfTest
             if (sample == null) return;
             if (sw.ElapsedMilliseconds - lastLog < 3000) return;
             lastLog = sw.ElapsedMilliseconds;
-            log.WriteLine($"  [进度] {t.Done / 1048576.0:0.00} / {t.Size / 1048576.0:0.00} MiB " +
+            L($"  [进度] {t.Done / 1048576.0:0.00} / {t.Size / 1048576.0:0.00} MiB " +
                           $"{sample.AverageBytesPerSecond / 1048576.0:0.00} MiB/s(3s均) " +
                           $"（最近 0.5s +{sample.WindowBytes} B｜" +
                           string.Join(" ", sample.PerConnection.Select(c => $"{c.Label}:{c.Speed / 1048576.0:0.00}")) + "）");

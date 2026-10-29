@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -19,6 +20,7 @@ public sealed partial class TaskItemViewModel : ObservableObject
     private DownloadTask _task;
     private double _speed;
     private long _windowBytes;
+    private string _connText = "";
 
     private static readonly IBrush QueuedBrush = new SolidColorBrush(Color.Parse("#6B7280"));
     private static readonly IBrush RunningBrush = new SolidColorBrush(Color.Parse("#2563EB"));
@@ -91,6 +93,23 @@ public sealed partial class TaskItemViewModel : ObservableObject
         ? $"最近 0.5s +{DownloadEngine.FormatSize(_windowBytes)}"
         : "";
 
+    /// <summary>每条连接的速度，拼成一行：`l xz 3.2 · hello 2.8 · withme 4.1 MiB/s`。</summary>
+    public string ConnText => _connText;
+    public bool HasConnText => _connText.Length > 0;
+
+    /// <summary>累计下载用时（暂停/排队的时间不算）。</summary>
+    public string ElapsedText
+    {
+        get
+        {
+            if (_task.ElapsedMs <= 0) return "";
+            var t = TimeSpan.FromMilliseconds(_task.ElapsedMs);
+            return t.TotalHours >= 1
+                ? $"用时 {(int)t.TotalHours}:{t.Minutes:00}:{t.Seconds:00}"
+                : $"用时 {t.Minutes:00}:{t.Seconds:00}";
+        }
+    }
+
     public string? ErrorText => string.IsNullOrEmpty(_task.Error) ? null : _task.Error;
     public bool HasError => !string.IsNullOrEmpty(_task.Error);
 
@@ -104,13 +123,18 @@ public sealed partial class TaskItemViewModel : ObservableObject
         _task = task;
         if (sample != null)
         {
-            _speed = sample.BytesPerSecond;
+            _speed = sample.AverageBytesPerSecond;   // 用 3 秒滑动平均，避免 0/20 来回跳
             _windowBytes = sample.WindowBytes;
+            _connText = sample.PerConnection.Count == 0
+                ? ""
+                : string.Join(" · ", sample.PerConnection.Select(c =>
+                    $"{(c.Label.Length > 8 ? c.Label.Substring(0, 8) : c.Label)} {c.Speed / 1048576.0:0.0}")) + " MiB/s";
         }
         else if (task.Status != DownloadStatus.Downloading)
         {
             _speed = 0;
             _windowBytes = 0;
+            _connText = "";
         }
 
         OnPropertyChanged(nameof(Title));
@@ -122,6 +146,9 @@ public sealed partial class TaskItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ProgressValue));
         OnPropertyChanged(nameof(SpeedText));
         OnPropertyChanged(nameof(WindowText));
+        OnPropertyChanged(nameof(ConnText));
+        OnPropertyChanged(nameof(HasConnText));
+        OnPropertyChanged(nameof(ElapsedText));
         OnPropertyChanged(nameof(ErrorText));
         OnPropertyChanged(nameof(HasError));
         OnPropertyChanged(nameof(CanStop));

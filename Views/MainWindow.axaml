@@ -75,7 +75,7 @@
                                     <DataTemplate x:DataType="vm:TaskItemViewModel">
                                         <Border Margin="4,4" Padding="12" CornerRadius="8"
                                                 Background="#FAFBFC" BorderBrush="#E9ECF1" BorderThickness="1">
-                                            <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
+                                            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="8">
 
                                                 <Grid ColumnDefinitions="*,Auto,Auto">
                                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
@@ -99,6 +99,7 @@
                                                     <TextBlock Text="{Binding Subtitle}" Classes="dim"
                                                                TextTrimming="CharacterEllipsis" MaxLines="1" />
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="10">
+                                                        <TextBlock Text="{Binding ElapsedText}" Classes="dim" Foreground="#6B7280" />
                                                         <TextBlock Text="{Binding WindowText}" Classes="dim" Foreground="#2563EB" />
                                                         <TextBlock Text="{Binding SpeedText}" Classes="dim" Foreground="#059669"
                                                                    FontWeight="SemiBold" />
@@ -109,7 +110,12 @@
                                                              Value="{Binding ProgressValue}" Height="6"
                                                              Foreground="#2563EB" Background="#EDF0F4" />
 
-                                                <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Row="3" Text="{Binding ConnText}" FontSize="11"
+                                                           Foreground="#9AA3AF" TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1" IsVisible="{Binding HasConnText}"
+                                                           ToolTip.Tip="每条连接（一个账号一条）的实时速度" />
+
+                                                <Grid Grid.Row="4" ColumnDefinitions="*,Auto">
                                                     <TextBlock Text="{Binding ErrorText}" Foreground="#DC2626" FontSize="11"
                                                                IsVisible="{Binding HasError}" TextWrapping="Wrap" MaxLines="2" />
                                                     <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">

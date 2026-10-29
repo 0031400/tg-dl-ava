@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.Linq;
 using System.Text;
 using Avalonia;
 using tgdl.Mtproto;
@@ -205,8 +206,9 @@ internal static class SelfTest
             if (sw.ElapsedMilliseconds - lastLog < 3000) return;
             lastLog = sw.ElapsedMilliseconds;
             log.WriteLine($"  [进度] {t.Done / 1048576.0:0.00} / {t.Size / 1048576.0:0.00} MiB " +
-                          $"{sample.BytesPerSecond / 1048576.0:0.00} MiB/s " +
-                          $"（最近 0.5s +{sample.WindowBytes} B，{sample.PerConnection.Length} 条连接）");
+                          $"{sample.AverageBytesPerSecond / 1048576.0:0.00} MiB/s(3s均) " +
+                          $"（最近 0.5s +{sample.WindowBytes} B｜" +
+                          string.Join(" ", sample.PerConnection.Select(c => $"{c.Label}:{c.Speed / 1048576.0:0.00}")) + "）");
         };
 
         try

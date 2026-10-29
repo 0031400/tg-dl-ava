@@ -11,8 +11,13 @@ using tgdl.Storage;
 
 namespace tgdl.Download;
 
-/// <summary>0.5s 一次的速度采样。</summary>
-public sealed record SpeedSample(long WindowBytes, double BytesPerSecond, double[] PerConnection)
+/// <summary>
+/// 0.5s 一次的速度采样。
+/// WindowBytes 是「最近 0.5s 实际收到多少字节」（原始值，抖动很大）；
+/// AverageBytesPerSecond 是最近约 3 秒的滑动平均，用来显示"速度"才不会一会儿 0 一会儿 20。
+/// </summary>
+public sealed record SpeedSample(long WindowBytes, double BytesPerSecond,
+    IReadOnlyList<(string Label, double Speed)> PerConnection, double AverageBytesPerSecond)
 {
     public double TotalMib => BytesPerSecond / 1048576.0;
 }
@@ -180,7 +185,42 @@ public sealed class DownloadEngine : IAsyncDisposable
             if (accounts.Count < settings.AccountCount)
                 Emit($"只有 {accounts.Count} 个账号可用（设置要求 {settings.AccountCount} 个），按实际数量使用");
 
-            SetSession(SessionState.Ready, $"{ok} 个账号就绪");
+            // 预热：把每个账号"已有 key 的 DC"的连接全部建好。
+            // 这样下载时不用再临时建连（也就用上了 dc-ip.json 里记的 IP）。
+            var targets = new List<(Account Acc, int Dc)>();
+            foreach (var acc in accounts)
+            {
+                foreach (var dc in acc.DcIds)
+                {
+                    if (acc.KeyFor(dc) != null) targets.Add((acc, dc));
+                }
+            }
+            int warmed = 0;
+            if (targets.Count > 0)
+            {
+                progress?.Report($"预热连接：{targets.Count} 条（" +
+                                 string.Join("、", targets.Select(t => "DC" + t.Dc).Distinct()) + "）…");
+                var warmTasks = targets.Select(async t =>
+                {
+                    try
+                    {
+                        await _pool.GetAsync(t.Acc, t.Dc, token).ConfigureAwait(false);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Emit($"预热 DC{t.Dc}（{t.Acc.Title}）失败：{ex.Message}");
+                        return false;
+                    }
+                }).ToList();
+                foreach (var t in warmTasks)
+                {
+                    if (await t.ConfigureAwait(false)) warmed++;
+                }
+                Emit($"预热完成：{warmed}/{targets.Count} 条连接已就绪（下载时直接复用）");
+            }
+
+            SetSession(SessionState.Ready, $"{ok} 个账号 · {_pool.ConnectionCount} 条连接");
             _signal.Release();
         }
         catch (OperationCanceledException)
@@ -477,7 +517,7 @@ public sealed class DownloadEngine : IAsyncDisposable
 
             // file_reference 和 access_hash 都是**账号作用域**的：拿 A 账号的给 B 账号用，
             // 服务端会回 FILE_REFERENCE_INVALID / CHANNEL_INVALID。所以每个账号必须自己取一次消息。
-            var sources = new List<(MtpConnection Conn, byte[] Location)>();
+            var sources = new List<DownloadSource>();
             foreach (var pair in pairs)
             {
                 try
@@ -489,7 +529,7 @@ public sealed class DownloadEngine : IAsyncDisposable
                     var message = await MtpApi.GetMessageAsync(homeConn, peer, task.MessageId, ct).ConfigureAwait(false);
                     var media = MtpApi.ExtractMedia(message);
                     // 下载仍然走文件所在 DC 的那条连接
-                    sources.Add((pair.Conn, media.Location));
+                    sources.Add(new DownloadSource(pair.Account, pair.Conn, media.Location));
 
                     // 用第一个成功的账号回填展示信息
                     if (task.Size <= 0)
@@ -724,12 +764,15 @@ public sealed class DownloadEngine : IAsyncDisposable
     private sealed class ChunkState
     {
         public long Done;
+        public long ElapsedMs;   // 只累计"正在下载"的时间
         public int Cursor = -1;
         public Exception? Failure;
     }
 
-    private async Task RunSessionAsync(DownloadTask task, List<(MtpConnection Conn, byte[] Location)> sources,
-        CancellationToken ct)
+    /// <summary>一条下载通道 = 一个账号的一条连接 + 它自己的 file_reference。</summary>
+    private sealed record DownloadSource(Account Account, MtpConnection Conn, byte[] Location);
+
+    private async Task RunSessionAsync(DownloadTask task, List<DownloadSource> sources, CancellationToken ct)
     {
         var settings = SettingsStore.Current;
         int chunk = NormalizeChunk(settings.ChunkSize);
@@ -768,18 +811,19 @@ public sealed class DownloadEngine : IAsyncDisposable
             }
             if (already > 0) Emit($"续传：已有 {FormatSize(already)}，剩 {FormatSize(size - already)}");
 
-            var st = state = new ChunkState { Done = already };
+            var st = state = new ChunkState { Done = already, ElapsedMs = task.ElapsedMs };
             var limiters = sources.Select(_ => new AdaptiveLimiter(settings.ConcurrencyPerAccount, settings.AdaptiveFlood)).ToList();
             var connBytes = new long[sources.Count];
 
-            void Report(long done, SpeedSample? sample)
+            void Report(long done, long elapsedMs, SpeedSample? sample)
             {
                 lock (_lock)
                 {
                     var t = _tasks.FirstOrDefault(x => x.Id == task.Id);
-                    if (t != null) t.Done = done;
+                    if (t != null) { t.Done = done; t.ElapsedMs = elapsedMs; }
                 }
                 task.Done = done;
+                task.ElapsedMs = elapsedMs;
                 TaskProgress?.Invoke(task, sample);
             }
 
@@ -791,6 +835,8 @@ public sealed class DownloadEngine : IAsyncDisposable
             var sampler = Task.Run(async () =>
             {
                 long lastTick = Stopwatch.GetTimestamp();
+                // 最近 3 秒的窗口，用来算平滑速度
+                var recent = new Queue<(long Bytes, double Seconds)>();
                 try
                 {
                     while (!sampleCts.IsCancellationRequested)
@@ -800,15 +846,28 @@ public sealed class DownloadEngine : IAsyncDisposable
                         double dt = (now - lastTick) / (double)Stopwatch.Frequency;
                         lastTick = now;
                         if (dt <= 0) continue;
-                        var per = new double[sources.Count];
+                        var per = new List<(string, double)>(sources.Count);
                         long window = 0;
                         for (int i = 0; i < sources.Count; i++)
                         {
                             long b = Interlocked.Exchange(ref connBytes[i], 0);
-                            per[i] = b / dt;
+                            per.Add((sources[i].Account.Title, b / dt));
                             window += b;
                         }
-                        Report(Interlocked.Read(ref st.Done), new SpeedSample(window, window / dt, per));
+
+                        recent.Enqueue((window, dt));
+                        double totalSec = 0, totalBytes = 0;
+                        foreach (var (bytes, seconds) in recent) { totalBytes += bytes; totalSec += seconds; }
+                        while (totalSec > 3.0 && recent.Count > 1)
+                        {
+                            var old = recent.Dequeue();
+                            totalSec -= old.Seconds;
+                            totalBytes -= old.Bytes;
+                        }
+                        double avg = totalSec > 0 ? totalBytes / totalSec : 0;
+
+                        st.ElapsedMs += (long)(dt * 1000);
+                        Report(Interlocked.Read(ref st.Done), st.ElapsedMs, new SpeedSample(window, window / dt, per, avg));
                     }
                 }
                 catch (OperationCanceledException) { /* 正常结束 */ }

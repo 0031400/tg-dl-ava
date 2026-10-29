@@ -153,7 +153,7 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         if (_map.TryGetValue(task.Id, out var vm))
             vm.Update(task, sample);
 
-        if (sample != null) _speeds[task.Id] = sample.BytesPerSecond;
+        if (sample != null) _speeds[task.Id] = sample.AverageBytesPerSecond;
         else if (task.Status != DownloadStatus.Downloading) _speeds.Remove(task.Id);
 
         double total = _speeds.Values.Sum();

@@ -38,6 +38,9 @@ public sealed class DownloadTask
 
     public int DcId { get; set; }
 
+    /// <summary>累计"正在下载"的毫秒数（暂停/排队的时间不算）。</summary>
+    public long ElapsedMs { get; set; }
+
     /// <summary>已完成的分片区间，如 "0-12,14-20"。</summary>
     public string? ChunkMap { get; set; }
 

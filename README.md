@@ -87,6 +87,9 @@ Mtproto/
 * **msg_key 派生只哈希 `msg_key + auth_key[x..x+36]` 这 52 字节**，缓冲区开大了会把垃圾也哈希进去。
 * **`rpc_result` 里的结果对象本身也可能是 `gzip_packed`**，要再剥一层。
 * **salt 只在 `new_session_created` / `bad_server_salt` 时更新**，别从消息头里读。
+* **`upload.getFile` 的 `limit` 必须是 4096 的倍数**。文件末尾那一片如果按「剩余字节数」传
+  （几乎必然不是 4096 的倍数），会得到 `400 LIMIT_INVALID`。正确做法是**永远传整个分片大小**，
+  服务端只返回剩下的字节，再按实际长度写盘。
 * **`importAuthorization` 不能并发**（服务端只放行一条），但 DH 可以并发 —— 所以是「并行 DH + 串行导出/导入」。
 * **`exportAuthorization` 不能导出当前会话所在 DC 的授权**，所以主 DC 自己派生不出新 key。
 

@@ -31,6 +31,18 @@ internal sealed class LocationExpiredException : Exception
     public LocationExpiredException() : base("file_reference 已过期，需要重新取消息") { }
 }
 
+/// <summary>连接断了：不能在同一连接上重试，要重建连接后从断点继续。</summary>
+internal sealed class ConnectionLostException : Exception
+{
+    public ConnectionLostException(string message, Exception? inner = null) : base(message, inner)
+    {
+        // 服务端用 4 字节错误码踢连接时，-429 表示限流，要等久一点再重连
+        IsFlood = message.Contains("-429", StringComparison.Ordinal);
+    }
+
+    public bool IsFlood { get; }
+}
+
 /// <summary>服务端说这个文件不在当前 DC（FILE_MIGRATE_n），要换 DC 重来。</summary>
 internal sealed class FileMigrateException : Exception
 {
@@ -463,15 +475,25 @@ public sealed class DownloadEngine : IAsyncDisposable
         // 万一服务端回 FILE_MIGRATE_n（文件被挪到别的 DC），跟着它换 DC 继续。
         for (int attempt = 0; ; attempt++)
         {
+            // 死掉的连接会在 GetAsync 里被自动替换成新的
             var conns = await _pool.GetDownloadConnectionsAsync(task.DcId, settings.AuthKeyCount, progress, ct)
                 .ConfigureAwait(false);
-            Emit($"开始下载 {task.Title}（{FormatSize(task.Size)}，文件在 DC{task.DcId}，" +
-                 $"{conns.Count} 条连接 × {settings.ConcurrencyPerKey} 并发）");
+            Emit(attempt == 0
+                ? $"开始下载 {task.Title}（{FormatSize(task.Size)}，文件在 DC{task.DcId}，" +
+                  $"{conns.Count} 条连接 × {settings.ConcurrencyPerKey} 并发）"
+                : $"继续下载 {task.Title}（已下 {FormatSize(task.Done)} / {FormatSize(task.Size)}，" +
+                  $"{conns.Count} 条连接）");
 
             try
             {
                 await RunSessionAsync(task, conns, ct).ConfigureAwait(false);
                 break;
+            }
+            catch (ConnectionLostException lost) when (attempt < 5)
+            {
+                int wait = (lost.IsFlood ? 4000 : 800) * (attempt + 1);
+                Emit($"连接断了（{lost.Message}），{wait / 1000.0:0.#} 秒后重连并从断点继续…");
+                await Task.Delay(wait, ct).ConfigureAwait(false);
             }
             catch (FileMigrateException mig) when (attempt < 2)
             {
@@ -702,13 +724,18 @@ public sealed class DownloadEngine : IAsyncDisposable
             int i = Interlocked.Increment(ref state.Cursor);
             if (i >= pending.Count) return;
             long offset = pending[i];
-            int limit = (int)Math.Min(chunk, size - offset);
+            long remaining = size - offset;
+            int expected = (int)Math.Min(chunk, remaining);
+            // limit 必须永远传"整个分片"：Telegram 要求 limit 是 4096 的倍数，
+            // 传"剩余字节数"（文件末尾那一片必然不是 4096 的倍数）会得到 400 LIMIT_INVALID。
+            // 末尾服务端只返回剩下的字节，所以按 expected 校验即可。
+            int limit = chunk;
 
-            byte[] data;
             try
             {
                 await limiter.WaitCooldownAsync(ct).ConfigureAwait(false);
                 await limiter.AcquireAsync(ct).ConfigureAwait(false);
+                byte[] data;
                 try
                 {
                     data = await FetchAsync(conn, connIndex, location, offset, limit, limiter, ct).ConfigureAwait(false);
@@ -717,6 +744,18 @@ public sealed class DownloadEngine : IAsyncDisposable
                 {
                     limiter.Release();
                 }
+
+                if (data.Length == 0)
+                    throw new MtpException($"offset {offset} 返回了 0 字节");
+
+                int n = Math.Min(data.Length, expected);
+                RandomAccess.Write(handle, data.AsSpan(0, n), offset);
+                Interlocked.Add(ref state.Done, n);
+                Interlocked.Add(ref connBytes[connIndex], n);
+
+                if (n < expected)
+                    throw new MtpException($"分片不完整 offset={offset} 期望 {expected} 实际 {n}");
+                completed[i] = true;
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)
@@ -725,14 +764,6 @@ public sealed class DownloadEngine : IAsyncDisposable
                 sessionCts.Cancel();   // 其它 worker 立刻停手
                 return;
             }
-
-            if (data.Length > 0)
-            {
-                RandomAccess.Write(handle, data, offset);
-                Interlocked.Add(ref state.Done, data.Length);
-                Interlocked.Add(ref connBytes[connIndex], data.Length);
-            }
-            completed[i] = true;
         }
     }
 
@@ -753,9 +784,18 @@ public sealed class DownloadEngine : IAsyncDisposable
             catch (RpcException ex) when (ex.IsFloodWait)
             {
                 int seconds = ex.FloodSeconds;
+                int before = limiter.Limit;
                 int now = limiter.NoteFlood(seconds);
+                string tail = limiter.Adaptive
+                    ? (now < before ? $"并发降到 {now}/{limiter.MaxLimit}" : $"并发 {now}/{limiter.MaxLimit}")
+                    : $"并发保持 {now}/{limiter.MaxLimit}（自适应已关闭）";
                 Emit($"连接 #{connIndex + 1} FLOOD_WAIT {seconds}s：这条连接暂停 {seconds}s，其余继续" +
-                     $"（并发 {now}/{limiter.MaxLimit}，累计 {limiter.FloodCount} 次）");
+                     $"（{tail}，累计 {limiter.FloodCount} 次）");
+                if (limiter.FloodCount == 10)
+                {
+                    Emit("提示：这条连接已经限流 10 次。把「每条 key 的并发」降到 2~3，" +
+                         "或打开「自适应限流」，通常比硬扛更快。");
+                }
                 last = ex;
             }
             catch (RpcException ex) when (ex.Text.Contains("FILE_REFERENCE", StringComparison.Ordinal))
@@ -767,6 +807,11 @@ public sealed class DownloadEngine : IAsyncDisposable
                 throw new FileMigrateException(migrateDc);
             }
             catch (OperationCanceledException) { throw; }
+            catch (Exception ex) when (IsConnectionLost(conn, ex))
+            {
+                // 连接已经死了，在它上面重试没有意义：交给上层重连
+                throw new ConnectionLostException(conn.FatalError?.Message ?? ex.Message, ex);
+            }
             catch (Exception ex)
             {
                 last = ex;
@@ -774,6 +819,16 @@ public sealed class DownloadEngine : IAsyncDisposable
             }
         }
         throw new MtpException($"offset {offset} 重试 6 次仍失败：{last?.Message}", last ?? new Exception());
+    }
+
+    private static bool IsConnectionLost(MtpConnection conn, Exception ex)
+    {
+        if (conn.IsDead) return true;
+        if (ex is IOException or ObjectDisposedException) return true;
+        if (ex is MtpException m)
+            return m.Message.Contains("连接已断开", StringComparison.Ordinal)
+                   || m.Message.Contains("连接中断", StringComparison.Ordinal);
+        return false;
     }
 
     // ------------------------------------------------------------------ 辅助
@@ -819,6 +874,9 @@ public sealed class DownloadEngine : IAsyncDisposable
     private void SaveChunkMap(DownloadTask task, bool[] completed, int chunkCount, long done)
     {
         var map = EncodeChunkMap(completed);
+        // 本地这份也要更新：重连/换 DC 时会拿它当续传依据
+        task.ChunkMap = map;
+        task.Done = done;
         lock (_lock)
         {
             var t = _tasks.FirstOrDefault(x => x.Id == task.Id);

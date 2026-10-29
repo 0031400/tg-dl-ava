@@ -67,6 +67,9 @@ public sealed class MtpConnection : IAsyncDisposable
     public string Remote => _t.Remote;
     public long TimeOffsetSeconds => _timeOffset;
     public bool IsDead => _dead;
+
+    /// <summary>连接是怎么死的（给上层日志用）。</summary>
+    public Exception? FatalError => _fatal;
     public bool InitSent => _initSent;
 
     /// <summary>用现成的 auth key 连一条新连接（不做 DH）。</summary>

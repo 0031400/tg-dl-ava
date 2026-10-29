@@ -31,6 +31,8 @@ public sealed class AdaptiveLimiter
     }
 
     public int Limit { get { lock (_gate) return _limit; } }
+
+    public bool Adaptive => _adaptive;
     public int MaxLimit => _max;
     public int FloodCount { get { lock (_gate) return _floods; } }
 

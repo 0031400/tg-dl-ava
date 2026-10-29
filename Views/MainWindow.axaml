@@ -9,7 +9,7 @@
         x:CompileBindings="True"
         Icon="/Assets/avalonia-logo.ico"
         Width="1240" Height="820" MinWidth="980" MinHeight="620"
-        Title="tgdl — Telegram 文件下载器">
+        Title="tgdl — Telegram 文件下载器（多账号）">
 
     <Design.DataContext>
         <vm:MainViewModel />
@@ -17,13 +17,13 @@
 
     <Grid RowDefinitions="Auto,*,Auto">
 
-        <!-- ============================ 顶部工具栏 ============================ -->
+        <!-- 顶部工具栏 -->
         <Border Grid.Row="0" Background="#FFFFFF" BorderBrush="#E4E7EC" BorderThickness="0,0,0,1" Padding="16,12">
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                     <TextBlock Text="tgdl" Classes="h1" VerticalAlignment="Center" />
                     <Border Width="1" Height="22" Background="#E4E7EC" Margin="4,0" />
-                    <TextBox Width="330" Height="34" VerticalContentAlignment="Center"
+                    <TextBox Width="310" Height="34" VerticalContentAlignment="Center"
                              PlaceholderText="chat_id:message_id  例如 -1001234567890:42"
                              Text="{Binding NewTarget}">
                         <TextBox.KeyBindings>
@@ -42,7 +42,7 @@
                     <Ellipse Width="8" Height="8" Fill="{Binding SessionBrush}" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding SessionText}" Classes="dim" VerticalAlignment="Center"
                                MaxWidth="190" TextTrimming="CharacterEllipsis"
-                               ToolTip.Tip="连接池状态：启动后按设置的 auth key 数量建立连接" />
+                               ToolTip.Tip="连接池状态：启动后按设置的账号数量逐个验证并建立连接" />
                     <Border Width="1" Height="22" Background="#E4E7EC" Margin="6,0" />
                     <TextBlock Text="总速度" Classes="dim" VerticalAlignment="Center" />
                     <TextBlock Text="{Binding TotalSpeedText}" FontWeight="SemiBold" FontSize="14"
@@ -51,8 +51,8 @@
             </Grid>
         </Border>
 
-        <!-- ============================ 主体 ============================ -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,430" Margin="12">
+        <!-- 主体 -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,440" Margin="12">
 
             <!-- 左：任务队列 -->
             <Border Grid.Column="0" Classes="card" Margin="0,0,12,0">
@@ -77,7 +77,6 @@
                                                 Background="#FAFBFC" BorderBrush="#E9ECF1" BorderThickness="1">
                                             <Grid RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="8">
 
-                                                <!-- 标题 + 状态 -->
                                                 <Grid ColumnDefinitions="*,Auto,Auto">
                                                     <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
                                                                TextTrimming="CharacterEllipsis" MaxLines="1"
@@ -96,7 +95,6 @@
                                                     </Border>
                                                 </Grid>
 
-                                                <!-- 元信息 -->
                                                 <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
                                                     <TextBlock Text="{Binding Subtitle}" Classes="dim"
                                                                TextTrimming="CharacterEllipsis" MaxLines="1" />
@@ -107,12 +105,10 @@
                                                     </StackPanel>
                                                 </Grid>
 
-                                                <!-- 进度条 -->
                                                 <ProgressBar Grid.Row="2" Minimum="0" Maximum="1"
                                                              Value="{Binding ProgressValue}" Height="6"
                                                              Foreground="#2563EB" Background="#EDF0F4" />
 
-                                                <!-- 操作按钮 -->
                                                 <Grid Grid.Row="3" ColumnDefinitions="*,Auto">
                                                     <TextBlock Text="{Binding ErrorText}" Foreground="#DC2626" FontSize="11"
                                                                IsVisible="{Binding HasError}" TextWrapping="Wrap" MaxLines="2" />
@@ -155,45 +151,43 @@
                 </Grid>
             </Border>
 
-            <!-- 右：auth key / 设置 / 日志 -->
+            <!-- 右：账号 / 设置 / 日志 -->
             <Border Grid.Column="1" Classes="card">
                 <TabControl Padding="0" SelectedIndex="{Binding SelectedTab}">
 
-                    <!-- = Auth Key = -->
-                    <TabItem Header="Auth Key">
+                    <!-- 账号 -->
+                    <TabItem Header="账号">
                         <ScrollViewer Padding="16">
                             <StackPanel Spacing="12">
 
                                 <TextBlock TextWrapping="Wrap" Classes="dim"
-                                           Text="auth key 就是授权凭据（等价于密码）。一条 key 对应一条独立 TCP 连接，Telegram 的限流按 key 计算，所以多条 key 并行能把额度摊开。" />
+                                           Text="一个账号 = 一条登录会话 = 一条 TCP 连接。限流按 key 算，所以账号越多能摊开的额度越多。每个账号在别的 DC 上只会留一条派生 key。" />
 
                                 <Border Background="#F7F9FC" CornerRadius="8" Padding="12" BorderBrush="#E4E7EC"
                                         BorderThickness="1">
                                     <StackPanel Spacing="4">
-                                        <TextBlock Text="{Binding AuthKeySummary}" Classes="h2" TextWrapping="Wrap" />
-                                        <TextBlock Text="密钥文件：data/authkeys.json（可直接与 Python 版互拷）"
-                                                   Classes="dim" TextWrapping="Wrap" />
+                                        <TextBlock Text="{Binding AccountSummary}" Classes="h2" TextWrapping="Wrap" />
+                                        <TextBlock Text="凭据文件：data/accounts.json" Classes="dim" TextWrapping="Wrap" />
                                     </StackPanel>
                                 </Border>
 
                                 <WrapPanel Orientation="Horizontal">
-                                    <Button Content="导入 Key" Command="{Binding ToggleImportCommand}" Margin="0,0,8,8" />
-                                    <Button Content="派生 Key" Command="{Binding ToggleDeriveCommand}" Margin="0,0,8,8" />
+                                    <Button Content="导入账号" Command="{Binding ToggleImportCommand}" Margin="0,0,8,8"
+                                            Classes="accent" />
                                     <Button Content="同步会话列表" Command="{Binding SyncDialogsCommand}" Margin="0,0,8,8" />
-                                    <Button Content="{Binding ClearKeysLabel}" Command="{Binding ClearKeysCommand}"
+                                    <Button Content="{Binding ClearAccountsLabel}" Command="{Binding ClearAccountsCommand}"
                                             Foreground="#DC2626" Margin="0,0,8,8" />
                                 </WrapPanel>
 
-                                <!-- 导入面板 -->
                                 <Border IsVisible="{Binding ShowImport}" Background="#F7F9FC" CornerRadius="8"
                                         Padding="12" BorderBrush="#E4E7EC" BorderThickness="1">
                                     <StackPanel Spacing="8">
                                         <TextBlock Text="导入 auth key" Classes="h2" />
                                         <TextBlock Classes="dim" TextWrapping="Wrap"
-                                                   Text="粘贴 512 个 hex 字符（256 字节）的 auth key，并选择它属于哪个 DC。" />
+                                                   Text="粘贴 512 个 hex 字符（256 字节）的 auth key，并选择它属于哪个 DC。点「导入并验证」会立刻连上去用 users.getUsers 验证，通过才保存。" />
                                         <TextBox Text="{Binding ImportHex}" Height="72" AcceptsReturn="True"
                                                  TextWrapping="Wrap" PlaceholderText="0123abcd…" FontFamily="Consolas" />
-                                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto">
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto">
                                             <TextBlock Text="所属 DC" Classes="dim" VerticalAlignment="Center"
                                                        Margin="0,0,8,0" />
                                             <ComboBox Grid.Column="1" SelectedIndex="{Binding ImportDcIndex}" Width="90">
@@ -203,71 +197,43 @@
                                                 <ComboBoxItem>DC4</ComboBoxItem>
                                                 <ComboBoxItem>DC5</ComboBoxItem>
                                             </ComboBox>
-                                            <CheckBox Grid.Column="2" Content="设为主 DC" IsChecked="{Binding ImportAsHome}"
-                                                      Margin="12,0" />
-                                            <Button Grid.Column="3" Content="导入" Classes="accent"
-                                                    Command="{Binding ImportKeyCommand}" />
+                                            <Button Grid.Column="3" Content="导入并验证" Classes="accent"
+                                                    Command="{Binding ImportAccountCommand}" />
                                         </Grid>
+                                        <TextBlock Text="{Binding ImportStatus}" Classes="dim" TextWrapping="Wrap"
+                                                   Foreground="#2563EB" />
                                     </StackPanel>
                                 </Border>
 
-                                <!-- 派生面板 -->
-                                <Border IsVisible="{Binding ShowDerive}" Background="#F7F9FC" CornerRadius="8"
-                                        Padding="12" BorderBrush="#E4E7EC" BorderThickness="1">
-                                    <StackPanel Spacing="8">
-                                        <TextBlock Text="从主 key 派生新 key" Classes="h2" />
-                                        <TextBlock Classes="dim" TextWrapping="Wrap"
-                                                   Text="对目标 DC 做一次全新 DH 握手，再从主 DC 导出授权导入进去 —— 不需要重新登录，每条都是独立 key。注意：不能派生「主 DC 自己」的 key（Telegram 不允许导出本 DC 授权）。" />
-                                        <Grid ColumnDefinitions="Auto,Auto,Auto,Auto">
-                                            <TextBlock Text="目标 DC" Classes="dim" VerticalAlignment="Center"
-                                                       Margin="0,0,8,0" />
-                                            <ComboBox Grid.Column="1" SelectedIndex="{Binding DeriveDcIndex}" Width="90">
-                                                <ComboBoxItem>DC1</ComboBoxItem>
-                                                <ComboBoxItem>DC2</ComboBoxItem>
-                                                <ComboBoxItem>DC3</ComboBoxItem>
-                                                <ComboBoxItem>DC4</ComboBoxItem>
-                                                <ComboBoxItem>DC5</ComboBoxItem>
-                                            </ComboBox>
-                                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" Margin="12,0">
-                                                <TextBlock Text="数量" Classes="dim" VerticalAlignment="Center" />
-                                                <NumericUpDown Value="{Binding DeriveCount}" Minimum="1" Maximum="12"
-                                                               Increment="1" Width="110" FormatString="0" />
-                                            </StackPanel>
-                                            <Button Grid.Column="3" Content="开始派生" Classes="accent"
-                                                    IsEnabled="{Binding CanDerive}"
-                                                    Command="{Binding DeriveKeysCommand}" />
-                                        </Grid>
-                                        <TextBlock Text="{Binding DeriveHint}" Classes="dim" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- key 列表 -->
-                                <ItemsControl ItemsSource="{Binding AuthKeyGroups}">
+                                <ItemsControl ItemsSource="{Binding Accounts}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="vm:AuthKeyGroupViewModel">
+                                        <DataTemplate x:DataType="vm:AccountItemViewModel">
                                             <Border Background="#F7F9FC" CornerRadius="8" Padding="12" Margin="0,0,0,8"
                                                     BorderBrush="#E4E7EC" BorderThickness="1">
-                                                <StackPanel Spacing="6">
-                                                    <TextBlock Text="{Binding Header}" Classes="h2" />
-                                                    <ItemsControl ItemsSource="{Binding Keys}">
-                                                        <ItemsControl.ItemTemplate>
-                                                            <DataTemplate x:DataType="vm:AuthKeyItemViewModel">
-                                                                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
-                                                                    <Border Background="#E7F0FF" CornerRadius="4" Padding="6,1"
-                                                                            IsVisible="{Binding IsPrimary}">
-                                                                        <TextBlock Text="主" FontSize="10" Foreground="#2563EB" />
-                                                                    </Border>
-                                                                    <TextBlock Grid.Column="1" Text="{Binding ShortHex}"
-                                                                               FontFamily="Consolas" FontSize="12"
-                                                                               VerticalAlignment="Center" Margin="8,0"
-                                                                               Foreground="#374151" />
-                                                                    <Button Grid.Column="2" Content="删除" FontSize="11"
-                                                                            Height="22" Padding="8,0"
-                                                                            Command="{Binding RemoveCommand}" />
-                                                                </Grid>
-                                                            </DataTemplate>
-                                                        </ItemsControl.ItemTemplate>
-                                                    </ItemsControl>
+                                                <StackPanel Spacing="5">
+                                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                                        <Border Background="#E7F0FF" CornerRadius="4" Padding="6,1"
+                                                                IsVisible="{Binding IsActive}">
+                                                            <TextBlock Text="使用中" FontSize="10" Foreground="#2563EB" />
+                                                        </Border>
+                                                        <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold"
+                                                                   Margin="8,0" VerticalAlignment="Center"
+                                                                   TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                                                            <Button Content="验证" FontSize="11" Height="22" Padding="8,0"
+                                                                    Command="{Binding VerifyCommand}" />
+                                                            <Button Content="删除" FontSize="11" Height="22" Padding="8,0"
+                                                                    Command="{Binding RemoveCommand}" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                    <TextBlock Text="{Binding Subtitle}" Classes="dim"
+                                                               TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Text="{Binding DcsText}" FontSize="11"
+                                                                   Foreground="#059669" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding LastOkText}"
+                                                                   FontSize="11" Foreground="#9AA3AF" />
+                                                    </Grid>
                                                 </StackPanel>
                                             </Border>
                                         </DataTemplate>
@@ -278,21 +244,21 @@
                         </ScrollViewer>
                     </TabItem>
 
-                    <!-- = 设置 = -->
+                    <!-- 设置 -->
                     <TabItem Header="设置">
                         <ScrollViewer Padding="16">
                             <StackPanel Spacing="14">
 
                                 <TextBlock Text="并发" Classes="h2" />
-                                <Grid ColumnDefinitions="150,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
-                                    <TextBlock Text="使用多少条 auth key" Classes="dim" VerticalAlignment="Center" />
-                                    <NumericUpDown Grid.Column="1" Value="{Binding Settings.AuthKeyCount}"
+                                <Grid ColumnDefinitions="160,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="10">
+                                    <TextBlock Text="使用多少个账号" Classes="dim" VerticalAlignment="Center" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding Settings.AccountCount}"
                                                    Minimum="1" Maximum="12" Increment="1" FormatString="0" />
 
-                                    <TextBlock Grid.Row="1" Text="每条 key 的并发" Classes="dim" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Row="1" Text="每个账号的并发" Classes="dim" VerticalAlignment="Center" />
                                     <NumericUpDown Grid.Row="1" Grid.Column="1"
-                                                   Value="{Binding Settings.ConcurrencyPerKey}"
-                                                   Minimum="1" Maximum="32" Increment="1" FormatString="0" />
+                                                   Value="{Binding Settings.ConcurrencyPerAccount}"
+                                                   Minimum="1" Maximum="10" Increment="1" FormatString="0" />
 
                                     <TextBlock Grid.Row="2" Text="分片大小 (KiB)" Classes="dim" VerticalAlignment="Center" />
                                     <NumericUpDown Grid.Row="2" Grid.Column="1" Value="{Binding Settings.ChunkKb}"
@@ -329,15 +295,15 @@
 
                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                     <Button Content="保存设置" Classes="accent" Command="{Binding SaveSettingsCommand}" />
-                                    <TextBlock Text="总并发建议 ≤ 32；超过之后 FLOOD_WAIT 会明显变多"
-                                               Classes="dim" VerticalAlignment="Center" />
+                                    <TextBlock Text="账号数 × 每个并发 建议控制在 24 以内" Classes="dim"
+                                               VerticalAlignment="Center" />
                                 </StackPanel>
 
                             </StackPanel>
                         </ScrollViewer>
                     </TabItem>
 
-                    <!-- = 日志 = -->
+                    <!-- 日志 -->
                     <TabItem Header="日志">
                         <Grid RowDefinitions="Auto,*" Margin="12">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
@@ -348,20 +314,65 @@
                             <TextBox Grid.Row="1" Name="LogBox" Text="{Binding LogText}" IsReadOnly="True"
                                      AcceptsReturn="True" TextWrapping="NoWrap" FontFamily="Consolas"
                                      FontSize="11.5" Background="#FBFCFD" BorderBrush="#E4E7EC"
-                                     ScrollViewer.VerticalScrollBarVisibility="Auto" ScrollViewer.HorizontalScrollBarVisibility="Auto" />
+                                     ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                     ScrollViewer.HorizontalScrollBarVisibility="Auto" />
                         </Grid>
                     </TabItem>
                 </TabControl>
             </Border>
         </Grid>
 
-        <!-- ============================ 状态栏 ============================ -->
+        <!-- 状态栏 -->
         <Border Grid.Row="2" Background="#FFFFFF" BorderBrush="#E4E7EC" BorderThickness="0,1,0,0" Padding="16,6">
             <Grid ColumnDefinitions="*,Auto">
-                <TextBlock Text="{Binding StatusBar}" Classes="dim" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding StatusBar}" Classes="dim" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" MaxLines="1" />
                 <TextBlock Grid.Column="1" Classes="dim" VerticalAlignment="Center"
-                           Text="data 目录：exe\data   ·   authkeys.json / tasks.json / entities.json / settings.json" />
+                           Text="data：accounts.json / dc-ip.json / tasks.json / entities.json / settings.json" />
             </Grid>
         </Border>
+
+        <!-- 相册/多文件选择遮罩 -->
+        <Grid Grid.RowSpan="3" IsVisible="{Binding IsPicking}" Background="#66000000">
+            <Border Width="640" MaxHeight="580" Background="#FFFFFF" CornerRadius="12" Padding="18"
+                    VerticalAlignment="Center" HorizontalAlignment="Center"
+                    BorderBrush="#E4E7EC" BorderThickness="1">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding PickTitle}" Classes="h2" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding PickSummary}" Classes="dim" />
+                    </StackPanel>
+
+                    <ScrollViewer Grid.Row="1" Margin="0,12" MaxHeight="380">
+                        <ItemsControl ItemsSource="{Binding PickItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:MediaPickItemViewModel">
+                                    <Border Padding="8,6" Margin="0,2" CornerRadius="6" Background="#FAFBFC"
+                                            BorderBrush="#E9ECF1" BorderThickness="1">
+                                        <Grid ColumnDefinitions="Auto,*,Auto">
+                                            <CheckBox IsChecked="{Binding Selected}" VerticalAlignment="Center" />
+                                            <StackPanel Grid.Column="1" Margin="6,0" Spacing="2">
+                                                <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis"
+                                                           MaxLines="1" Foreground="#111827" />
+                                                <TextBlock Text="{Binding Subtitle}" Classes="dim" />
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="2" Text="{Binding KindText}" Classes="dim"
+                                                       VerticalAlignment="Center" Margin="8,0,0,0" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                        <Button Content="全选" Command="{Binding SelectAllPickCommand}" />
+                        <Button Content="全不选" Command="{Binding SelectNonePickCommand}" />
+                        <Button Content="取消" Command="{Binding CancelPickCommand}" />
+                        <Button Content="加入队列" Classes="accent" Command="{Binding ConfirmPickCommand}" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </Window>

@@ -9,7 +9,10 @@ public static class AppPaths
     public static string DataDir { get; } = EnsureDir(Path.Combine(AppContext.BaseDirectory, "data"));
 
     public static string SettingsFile => Path.Combine(DataDir, "settings.json");
-    public static string AuthKeysFile => Path.Combine(DataDir, "authkeys.json");
+    public static string AccountsFile => Path.Combine(DataDir, "accounts.json");
+    public static string DcIpFile => Path.Combine(DataDir, "dc-ip.json");
+    /// <summary>老版本的单 key 池，只用于一次性迁移。</summary>
+    public static string LegacyAuthKeysFile => Path.Combine(DataDir, "authkeys.json");
     public static string TasksFile => Path.Combine(DataDir, "tasks.json");
     public static string EntitiesFile => Path.Combine(DataDir, "entities.json");
     public static string LogFile => Path.Combine(DataDir, "app.log");

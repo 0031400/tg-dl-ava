@@ -11,7 +11,7 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
-        if (args.Length > 0 && (args[0] == "--selftest" || args[0] == "--probe" || args[0] == "--netdebug" || args[0] == "--cryptotest" || args[0] == "--prototest" || args[0] == "--teststore" || args[0] == "--sessiontest"))
+        if (args.Length > 0 && (args[0] == "--selftest" || args[0] == "--probe" || args[0] == "--netdebug" || args[0] == "--cryptotest" || args[0] == "--prototest" || args[0] == "--teststore" || args[0] == "--sessiontest" || args[0] == "--dl"))
         {
             SelfTest.Run(args);
             return;
@@ -54,11 +54,11 @@ internal static class SelfTest
             var task = args[0] switch
             {
                 "--probe" => ProbeAsync(args, log),
-                "--netdebug" => NetDebugAsync(log),
                 "--cryptotest" => CryptoTestAsync(log),
                 "--prototest" => ProtoTestAsync(log),
                 "--teststore" => StoreTestAsync(log),
                 "--sessiontest" => SessionTestAsync(log),
+                "--dl" => DownloadTestAsync(args, log),
                 _ => BasicAsync(log),
             };
             task.GetAwaiter().GetResult();
@@ -179,13 +179,79 @@ internal static class SelfTest
     }
 
     /// <summary>验证「启动/停止」的状态机：没有 key 时必须给出可操作的提示。</summary>
+    /// <summary>命令行下载：--dl &lt;chat:mid&gt; [最多下载多少 MiB]，用来验证多账号链路。</summary>
+    private static async System.Threading.Tasks.Task DownloadTestAsync(string[] args, TextWriter log)
+    {
+        if (args.Length < 2)
+        {
+            log.WriteLine("用法: --dl <chat_id:message_id> [maxMiB]");
+            return;
+        }
+        if (!tgdl.Models.TargetParser.TryParse(args[1], out var chatId, out var msgId, out var err))
+        {
+            log.WriteLine("输入有误：" + err);
+            return;
+        }
+        int maxMiB = args.Length > 2 && int.TryParse(args[2], out var m) ? m : 0;
+
+        await using var engine = new tgdl.Download.DownloadEngine();
+        engine.Log += msg => log.WriteLine("  " + msg);
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var lastLog = 0L;
+        engine.TaskProgress += (t, sample) =>
+        {
+            if (sample == null) return;
+            if (sw.ElapsedMilliseconds - lastLog < 3000) return;
+            lastLog = sw.ElapsedMilliseconds;
+            log.WriteLine($"  [进度] {t.Done / 1048576.0:0.00} / {t.Size / 1048576.0:0.00} MiB " +
+                          $"{sample.BytesPerSecond / 1048576.0:0.00} MiB/s " +
+                          $"（最近 0.5s +{sample.WindowBytes} B，{sample.PerConnection.Length} 条连接）");
+        };
+
+        try
+        {
+            await engine.StartSessionAsync(new Progress<string>(msg => log.WriteLine("  " + msg)), default);
+            engine.Start();
+            var task = engine.Enqueue(chatId, msgId, $"{chatId}:{msgId}");
+
+            for (int i = 0; i < 900; i++)
+            {
+                await System.Threading.Tasks.Task.Delay(1000);
+                var t = engine.Find(task.Id);
+                if (t == null) break;
+                if (t.Status is tgdl.Storage.DownloadStatus.Done or tgdl.Storage.DownloadStatus.Failed
+                    or tgdl.Storage.DownloadStatus.Paused)
+                {
+                    log.WriteLine($"结束：{t.Status}  已下 {t.Done / 1048576.0:0.00} MiB  文件={t.LocalPath}  错误={t.Error}");
+                    break;
+                }
+                if (maxMiB > 0 && t.Done >= maxMiB * 1024L * 1024L)
+                {
+                    engine.StopTask(t.Id);
+                    log.WriteLine($"已到上限 {maxMiB} MiB，停止（已下 {t.Done / 1048576.0:0.00} MiB）");
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            log.WriteLine("失败：" + ex);
+        }
+        finally
+        {
+            await engine.StopSessionAsync();
+        }
+    }
+
+    /// <summary>验证「启动/停止」状态机：没有账号时必须给出可操作的提示。</summary>
     private static async System.Threading.Tasks.Task SessionTestAsync(TextWriter log)
     {
-        var file = tgdl.Storage.AppPaths.AuthKeysFile;
+        var file = tgdl.Storage.AppPaths.AccountsFile;
         if (System.IO.File.Exists(file)) System.IO.File.Copy(file, file + ".bak", true);
         try
         {
-            tgdl.Storage.AuthKeyStore.ClearAll();
+            tgdl.Storage.AccountStore.ClearAll();
             await using var engine = new tgdl.Download.DownloadEngine();
             log.WriteLine($"初始状态：{engine.Session} / {engine.SessionText}");
             try
@@ -195,7 +261,7 @@ internal static class SelfTest
             }
             catch (tgdl.Mtproto.NeedAuthKeyException nex)
             {
-                log.WriteLine($"缺少 key 的提示（DC={nex.DcId?.ToString() ?? "null"}）：{nex.Message}");
+                log.WriteLine($"缺少账号的提示：{nex.Message}");
                 log.WriteLine($"状态：{engine.Session} / {engine.SessionText}");
             }
             await engine.StopSessionAsync();
@@ -213,32 +279,37 @@ internal static class SelfTest
             {
                 System.IO.File.Delete(file);
             }
-            tgdl.Storage.AuthKeyStore.Reload();
+            tgdl.Storage.AccountStore.Reload();
         }
     }
 
-    /// <summary>验证 authkeys.json 的读写（与 Python 版格式互通）。</summary>
+    /// <summary>验证 accounts.json 的读写（不联网）。</summary>
     private static System.Threading.Tasks.Task StoreTestAsync(TextWriter log)
     {
-        var file = tgdl.Storage.AppPaths.AuthKeysFile;
+        var file = tgdl.Storage.AppPaths.AccountsFile;
         if (System.IO.File.Exists(file)) System.IO.File.Copy(file, file + ".bak", true);
         try
         {
-            tgdl.Storage.AuthKeyStore.ClearAll();
-            var k1 = new byte[256];
-            var k2 = new byte[256];
-            System.Security.Cryptography.RandomNumberGenerator.Fill(k1);
-            System.Security.Cryptography.RandomNumberGenerator.Fill(k2);
-            tgdl.Mtproto.AuthKeyManager.Import(Convert.ToHexString(k1), 5, true);
-            tgdl.Storage.AuthKeyStore.Add(4, Convert.ToHexString(k2).ToLowerInvariant());
+            tgdl.Storage.AccountStore.ClearAll();
+            var acc = new tgdl.Storage.Account
+            {
+                UserId = 123456789,
+                DisplayName = "测试账号",
+                Username = "tester",
+                HomeDc = 5,
+                PrimaryKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(256)).ToLowerInvariant(),
+            };
+            acc.SetKeyFor(4, Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(256)).ToLowerInvariant());
+            tgdl.Storage.AccountStore.Upsert(acc);
 
-            log.WriteLine("authkeys.json:");
+            log.WriteLine("accounts.json:");
             log.WriteLine(System.IO.File.ReadAllText(file));
-            log.WriteLine($"解析：home_dc={tgdl.Storage.AuthKeyStore.HomeDc} home_ip={tgdl.Storage.AuthKeyStore.HomeIp} " +
-                          $"总条数={tgdl.Storage.AuthKeyStore.TotalCount} DC4={tgdl.Storage.AuthKeyStore.CountFor(4)} " +
-                          $"主key={tgdl.Storage.AuthKeyStore.PrimaryKeyHex?.Substring(0, 8)}");
-            var key = tgdl.Mtproto.AuthKey.FromHex(tgdl.Storage.AuthKeyStore.PrimaryKeyHex!);
-            log.WriteLine($"主 key 重新解析后 id=0x{key.Id:x16}");
+
+            var loaded = tgdl.Storage.AccountStore.All();
+            log.WriteLine($"读回 {loaded.Count} 个账号：{loaded[0].Title} DC{loaded[0].HomeDc} " +
+                          $"DC 列表={string.Join(",", loaded[0].DcIds)} key(DC4)={(loaded[0].KeyFor(4) != null ? "有" : "无")}");
+            var pick = tgdl.Storage.AccountStore.SelectForUse(5);
+            log.WriteLine($"设置要 5 个、实际只有 {tgdl.Storage.AccountStore.Count} 个 → 选出 {pick.Count} 个");
         }
         finally
         {
@@ -251,38 +322,9 @@ internal static class SelfTest
             {
                 System.IO.File.Delete(file);
             }
-            tgdl.Storage.AuthKeyStore.Reload();
+            tgdl.Storage.AccountStore.Reload();
         }
         return System.Threading.Tasks.Task.CompletedTask;
-    }
-
-    private static async System.Threading.Tasks.Task NetDebugAsync(TextWriter log)
-    {
-        var t = await MtpTransport.ConnectAsync("149.154.167.51", 443, TimeSpan.FromSeconds(10), default);
-        log.WriteLine($"已连接 {t.Remote}");
-        var nonce = new byte[16];
-        System.Security.Cryptography.RandomNumberGenerator.Fill(nonce);
-        var w = new TlWriter();
-        w.WriteUInt(TlIds.ReqPqMulti).WriteRaw(nonce);
-        var body = w.ToArray();
-        log.WriteLine($"body({body.Length}) = {Convert.ToHexString(body)}");
-
-        var frame = new byte[20 + body.Length];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(frame.AsSpan(0), 0);
-        System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(frame.AsSpan(8), DateTimeOffset.UtcNow.ToUnixTimeSeconds() << 32);
-        System.Buffers.Binary.BinaryPrimitives.WriteInt32LittleEndian(frame.AsSpan(16), body.Length);
-        body.CopyTo(frame, 20);
-        log.WriteLine($"frame({frame.Length}) = {Convert.ToHexString(frame)}");
-        try
-        {
-            var hs = await DhHandshake.RunAsync(t, default);
-            log.WriteLine($"DH 成功 key_id=0x{hs.Key.Id:x16} offset={hs.TimeOffsetSeconds}");
-        }
-        catch (Exception ex)
-        {
-            log.WriteLine("DH 失败: " + ex.GetType().Name + " " + ex.Message);
-        }
-        await t.DisposeAsync();
     }
 
     private static async System.Threading.Tasks.Task ProbeAsync(string[] args, TextWriter log)

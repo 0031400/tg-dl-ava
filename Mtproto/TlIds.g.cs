@@ -45,6 +45,10 @@ public static class TlIds
     public const uint Channel = 0x1C32B11C; // channel
     public const uint ChatForbidden = 0x6592A1A7; // chatForbidden
     public const uint User = 0x31774388; // user
+    public const uint ContactsResolveUsername = 0x725AFBBC; // contacts.resolveUsername
+    public const uint ContactsResolvedPeer = 0x7F077AD9; // contacts.resolvedPeer
+    public const uint UsersGetUsers = 0x0D91A548; // users.getUsers
+    public const uint InputUserSelf = 0xF7C1B13F; // inputUserSelf
     public const uint AuthAuthorization = 0x2EA2C0D4; // auth.authorization
     public const uint AuthExportedAuthorization = 0xB434E2B8; // auth.exportedAuthorization
     public const uint ReqPqMulti = 0xBE7E8EF1; // req_pq_multi

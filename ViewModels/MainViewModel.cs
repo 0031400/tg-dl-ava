@@ -31,8 +31,8 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
     public MainViewModel()
     {
         Tasks = new ObservableCollection<TaskItemViewModel>();
-        AuthKeyGroups = new ObservableCollection<AuthKeyGroupViewModel>();
-        DcList = new List<int> { 1, 2, 3, 4, 5 };
+        Accounts = new ObservableCollection<AccountItemViewModel>();
+        PickItems = new ObservableCollection<MediaPickItemViewModel>();
         Settings = new SettingsViewModel();
 
         MtpLog.Sink = msg => _ui.Post(() => AppendLog(msg));
@@ -44,45 +44,50 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
 
         Settings.LoadFrom(SettingsStore.Current);
         SyncTasks();
-        RefreshAuthKeys();
+        RefreshAccounts();
         RefreshSummary();
 
         AppendLog($"tgdl 启动。数据目录：{AppPaths.DataDir}");
-        if (AuthKeyStore.TotalCount == 0)
-            AppendLog("还没有 auth key：到右侧「Auth Key」页导入一条，或者把另一台机器的 data/authkeys.json 拷过来。");
-        AppendLog("点顶部「启动连接」建立连接；直接加入任务也会自动启动。");
+        if (AccountStore.Count == 0)
+            AppendLog("还没有账号：到右侧「账号」页粘贴一条 auth key，选好它属于哪个 DC，点「导入并验证」。");
+        else
+            AppendLog($"已加载 {AccountStore.Count} 个账号。点顶部「启动连接」验证并建立连接。");
 
         RefreshSession();
         _engine.Start();
     }
 
     public ObservableCollection<TaskItemViewModel> Tasks { get; }
-    public ObservableCollection<AuthKeyGroupViewModel> AuthKeyGroups { get; }
+    public ObservableCollection<AccountItemViewModel> Accounts { get; }
+    public ObservableCollection<MediaPickItemViewModel> PickItems { get; }
     public SettingsViewModel Settings { get; }
-    public List<int> DcList { get; }
 
     [ObservableProperty] public partial string NewTarget { get; set; } = "";
     [ObservableProperty] public partial string LogText { get; set; } = "";
     [ObservableProperty] public partial string TotalSpeedText { get; set; } = "0 B/s";
     [ObservableProperty] public partial string QueueSummary { get; set; } = "";
-    [ObservableProperty] public partial string AuthKeySummary { get; set; } = "";
+    [ObservableProperty] public partial string AccountSummary { get; set; } = "";
     [ObservableProperty] public partial string StatusBar { get; set; } = "就绪";
+    [ObservableProperty] public partial bool IsEmptyQueue { get; set; } = true;
+
+    // 账号导入
     [ObservableProperty] public partial bool ShowImport { get; set; }
-    [ObservableProperty] public partial bool ShowDerive { get; set; }
     [ObservableProperty] public partial string ImportHex { get; set; } = "";
     [ObservableProperty] public partial int ImportDcIndex { get; set; } = 4;
-    [ObservableProperty] public partial bool ImportAsHome { get; set; } = true;
-    [ObservableProperty] public partial int DeriveDcIndex { get; set; } = 3;
-    [ObservableProperty] public partial decimal? DeriveCount { get; set; } = 2;
+    [ObservableProperty] public partial string ImportStatus { get; set; } = "";
+    [ObservableProperty] public partial string ClearAccountsLabel { get; set; } = "清空全部";
     [ObservableProperty] public partial bool Busy { get; set; }
-    [ObservableProperty] public partial string ClearKeysLabel { get; set; } = "清空全部";
+
+    // 会话
     [ObservableProperty] public partial string SessionText { get; set; } = "未连接";
     [ObservableProperty] public partial string SessionButtonText { get; set; } = "启动连接";
     [ObservableProperty] public partial IBrush SessionBrush { get; set; } = new SolidColorBrush(Color.Parse("#9AA3AF"));
     [ObservableProperty] public partial int SelectedTab { get; set; }
-    [ObservableProperty] public partial bool CanDerive { get; set; } = true;
-    [ObservableProperty] public partial string DeriveHint { get; set; } = "";
-    [ObservableProperty] public partial bool IsEmptyQueue { get; set; } = true;
+
+    // 相册多选
+    [ObservableProperty] public partial bool IsPicking { get; set; }
+    [ObservableProperty] public partial string PickTitle { get; set; } = "";
+    [ObservableProperty] public partial string PickSummary { get; set; } = "";
 
     public event Action? LogAppended;
 
@@ -114,75 +119,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         _logBuffer.Clear();
         _logLines = 0;
         LogText = "";
-    }
-
-    // ------------------------------------------------------------------ 连接池启停
-
-    private static readonly IBrush DotStopped = new SolidColorBrush(Color.Parse("#9AA3AF"));
-    private static readonly IBrush DotBusy = new SolidColorBrush(Color.Parse("#2563EB"));
-    private static readonly IBrush DotReady = new SolidColorBrush(Color.Parse("#059669"));
-    private static readonly IBrush DotFailed = new SolidColorBrush(Color.Parse("#DC2626"));
-
-    private void RefreshSession()
-    {
-        var state = _engine.Session;
-        SessionText = _engine.SessionText;
-        SessionButtonText = state switch
-        {
-            SessionState.Ready => "停止连接",
-            SessionState.Starting => "连接中…",
-            _ => "启动连接",
-        };
-        SessionBrush = state switch
-        {
-            SessionState.Ready => DotReady,
-            SessionState.Starting => DotBusy,
-            SessionState.Failed => DotFailed,
-            _ => DotStopped,
-        };
-    }
-
-    [RelayCommand]
-    private async Task ToggleSessionAsync()
-    {
-        // 只有「已就绪」时这个按钮才是停止；连接中再点等于忽略
-        if (_engine.Session == SessionState.Ready)
-        {
-            await _engine.StopSessionAsync();
-            StatusBar = "连接已关闭（队列保留，重新启动后继续）";
-            RefreshSession();
-            return;
-        }
-        if (_engine.Session == SessionState.Starting) return;
-        await StartSessionCoreAsync();
-    }
-
-    /// <summary>启动连接；缺 key 时提示导入并把界面切到 Auth Key 页。</summary>
-    private async Task StartSessionCoreAsync()
-    {
-        StatusBar = "正在建立连接…";
-        try
-        {
-            var progress = new Progress<string>(AppendLog);
-            await _engine.StartSessionAsync(progress, CancellationToken.None);
-            StatusBar = "连接就绪：" + _engine.SessionText;
-        }
-        catch (NeedAuthKeyException nex)
-        {
-            AppendLog("需要导入 auth key —— " + nex.Message);
-            StatusBar = nex.Message;
-            SelectedTab = 0;
-            ShowImport = true;
-        }
-        catch (Exception ex)
-        {
-            AppendLog("启动失败：" + ex.Message);
-            StatusBar = "启动失败：" + ex.Message;
-        }
-        finally
-        {
-            RefreshSession();
-        }
     }
 
     // ------------------------------------------------------------------ 任务
@@ -296,13 +232,97 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             AppendLog("连接未启动，先自动启动连接池…");
             await StartSessionCoreAsync();
+            if (_engine.Session != SessionState.Ready)
+            {
+                _engine.Enqueue(chatId, messageId, $"{chatId}:{messageId}");
+                NewTarget = "";
+                StatusBar = "连接未就绪，任务已排队，启动后自动开始";
+                return;
+            }
         }
 
-        _engine.Enqueue(chatId, messageId, $"{chatId}:{messageId}");
+        // 先解析，看这条消息里是不是有多个文件（相册）
+        List<MtpApi.MediaEntry> media;
+        try
+        {
+            media = await _engine.ResolveMediaListAsync(chatId, messageId, CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"解析失败（直接按单条入队）：{ex.Message}");
+            _engine.Enqueue(chatId, messageId, $"{chatId}:{messageId}");
+            NewTarget = "";
+            return;
+        }
+
+        if (media.Count <= 1)
+        {
+            _engine.Enqueue(chatId, messageId, $"{chatId}:{messageId}");
+            NewTarget = "";
+            StatusBar = $"已加入队列 {chatId}:{messageId}";
+            return;
+        }
+
+        PickItems.Clear();
+        foreach (var m in media) PickItems.Add(new MediaPickItemViewModel(chatId, m));
+        PickTitle = $"这条消息里有 {media.Count} 个文件，选择要下载的：";
+        UpdatePickSummary();
+        IsPicking = true;
         NewTarget = "";
-        StatusBar = _engine.Session == SessionState.Ready
-            ? $"已加入队列 {chatId}:{messageId}"
-            : $"已加入队列 {chatId}:{messageId}（连接未就绪，启动后自动开始）";
+        StatusBar = $"发现 {media.Count} 个文件，请选择";
+    }
+
+    private void UpdatePickSummary()
+    {
+        var sel = PickItems.Where(p => p.Selected).ToList();
+        PickSummary = $"已选 {sel.Count}/{PickItems.Count} 个 · 共 {DownloadEngine.FormatSize(sel.Sum(p => p.Size))}";
+    }
+
+    partial void OnIsPickingChanged(bool value) => UpdatePickSummary();
+
+    [RelayCommand]
+    private void TogglePick(MediaPickItemViewModel item)
+    {
+        item.Selected = !item.Selected;
+        UpdatePickSummary();
+    }
+
+    [RelayCommand]
+    private void SelectAllPick()
+    {
+        foreach (var p in PickItems) p.Selected = true;
+        UpdatePickSummary();
+    }
+
+    [RelayCommand]
+    private void SelectNonePick()
+    {
+        foreach (var p in PickItems) p.Selected = false;
+        UpdatePickSummary();
+    }
+
+    [RelayCommand]
+    private void CancelPick()
+    {
+        IsPicking = false;
+        PickItems.Clear();
+        StatusBar = "已取消";
+    }
+
+    [RelayCommand]
+    private void ConfirmPick()
+    {
+        var sel = PickItems.Where(p => p.Selected).ToList();
+        if (sel.Count == 0)
+        {
+            StatusBar = "没有选中任何文件";
+            return;
+        }
+        foreach (var item in sel)
+            _engine.Enqueue(item.ChatId, item.MessageId, $"{item.ChatId}:{item.MessageId}");
+        IsPicking = false;
+        PickItems.Clear();
+        StatusBar = $"已加入队列 {sel.Count} 个文件";
     }
 
     [RelayCommand]
@@ -326,108 +346,118 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         catch (Exception ex) { AppendLog("打开目录失败：" + ex.Message); }
     }
 
-    // ------------------------------------------------------------------ auth key
+    // ------------------------------------------------------------------ 连接池启停
 
-    partial void OnDeriveDcIndexChanged(int value) => UpdateDeriveState();
+    private static readonly IBrush DotStopped = new SolidColorBrush(Color.Parse("#9AA3AF"));
+    private static readonly IBrush DotBusy = new SolidColorBrush(Color.Parse("#2563EB"));
+    private static readonly IBrush DotReady = new SolidColorBrush(Color.Parse("#059669"));
+    private static readonly IBrush DotFailed = new SolidColorBrush(Color.Parse("#DC2626"));
 
-    /// <summary>目标 DC 等于主 DC 时直接禁用派生按钮，别让用户点了才发现失败。</summary>
-    private void UpdateDeriveState()
+    private void RefreshSession()
     {
-        int target = DeriveDcIndex + 1;
-        var home = AuthKeyStore.HomeDc;
-        if (home == null)
+        var state = _engine.Session;
+        SessionText = _engine.SessionText;
+        SessionButtonText = state switch
         {
-            CanDerive = false;
-            DeriveHint = "还没有主 auth key，先导入一条。";
-            return;
-        }
-        if (home == target)
+            SessionState.Ready => "停止连接",
+            SessionState.Starting => "连接中…",
+            _ => "启动连接",
+        };
+        SessionBrush = state switch
         {
-            CanDerive = false;
-            DeriveHint = $"DC{target} 就是主 DC —— Telegram 不允许导出本 DC 的授权，派生不了。换个目标 DC。";
-            return;
-        }
-        CanDerive = true;
-        DeriveHint = $"从 DC{home} 导出授权、导进 DC{target} 的新连接，不需要重新登录。";
+            SessionState.Ready => DotReady,
+            SessionState.Starting => DotBusy,
+            SessionState.Failed => DotFailed,
+            _ => DotStopped,
+        };
     }
 
-    private void RefreshAuthKeys()
+    [RelayCommand]
+    private async Task ToggleSessionAsync()
     {
-        AuthKeyGroups.Clear();
-        var home = AuthKeyStore.HomeDc;
-        foreach (var dc in AuthKeyStore.DcIds)
+        if (_engine.Session == SessionState.Ready)
         {
-            var group = new AuthKeyGroupViewModel(dc, home == dc);
-            var keys = AuthKeyStore.KeysFor(dc);
-            for (int i = 0; i < keys.Count; i++)
-            {
-                var key = keys[i];
-                group.Keys.Add(new AuthKeyItemViewModel(dc, key, i == 0 && home == dc, RemoveKey));
-            }
-            AuthKeyGroups.Add(group);
+            await _engine.StopSessionAsync();
+            StatusBar = "连接已关闭（队列保留，重新启动后继续）";
+            RefreshSession();
+            return;
         }
-
-        UpdateDeriveState();
-        var parts = AuthKeyStore.DcIds.Select(dc => $"DC{dc} {AuthKeyStore.CountFor(dc)} 条");
-        AuthKeySummary = AuthKeyStore.TotalCount == 0
-            ? "还没有 auth key"
-            : $"共 {AuthKeyStore.TotalCount} 条（{string.Join("，", parts)}）｜主 DC{home?.ToString() ?? "未设置"}";
+        if (_engine.Session == SessionState.Starting) return;
+        await StartSessionCoreAsync();
     }
 
-    private void RemoveKey(AuthKeyItemViewModel item)
+    private async Task StartSessionCoreAsync()
     {
-        AuthKeyStore.Remove(item.DcId, item.Hex);
-        _ = _engine.Pool.DropAsync(item.DcId, item.Hex);
-        AppendLog($"已删除 DC{item.DcId} 的 key {item.ShortHex}…");
-        RefreshAuthKeys();
+        StatusBar = "正在验证账号并建立连接…";
+        try
+        {
+            var progress = new Progress<string>(AppendLog);
+            await _engine.StartSessionAsync(progress, CancellationToken.None);
+            StatusBar = "连接就绪：" + _engine.SessionText;
+        }
+        catch (NeedAuthKeyException nex)
+        {
+            AppendLog("需要导入账号 —— " + nex.Message);
+            StatusBar = nex.Message;
+            SelectedTab = 0;
+            ShowImport = true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog("启动失败：" + ex.Message);
+            StatusBar = "启动失败：" + ex.Message;
+        }
+        finally
+        {
+            RefreshSession();
+            RefreshAccounts();
+        }
+    }
+
+    // ------------------------------------------------------------------ 账号
+
+    private void RefreshAccounts()
+    {
+        var all = AccountStore.All();
+        int use = Math.Min(SettingsStore.Current.AccountCount, all.Count);
+        Accounts.Clear();
+        for (int i = 0; i < all.Count; i++)
+            Accounts.Add(new AccountItemViewModel(all[i], i < use, RemoveAccount, VerifyAccount));
+
+        AccountSummary = all.Count == 0
+            ? "还没有账号"
+            : $"{all.Count} 个账号（本次使用 {use} 个）｜" +
+              string.Join("，", all.Select(a => $"{a.Title}·DC{a.HomeDc}"));
     }
 
     [RelayCommand]
     private void ToggleImport() => ShowImport = !ShowImport;
 
     [RelayCommand]
-    private void ToggleDerive() => ShowDerive = !ShowDerive;
-
-    [RelayCommand]
-    private void ImportKey()
-    {
-        try
-        {
-            int dc = ImportDcIndex + 1;
-            AuthKeyManager.Import(ImportHex, dc, ImportAsHome);
-            var head = ImportHex.Trim();
-            AppendLog($"已导入 auth key 到 DC{dc}（{(head.Length >= 8 ? head.Substring(0, 8) : head)}…）");
-            ImportHex = "";
-            RefreshAuthKeys();
-            StatusBar = "导入成功";
-        }
-        catch (Exception ex)
-        {
-            AppendLog("导入失败：" + ex.Message);
-            StatusBar = "导入失败：" + ex.Message;
-        }
-    }
-
-    [RelayCommand]
-    private async Task DeriveKeysAsync()
+    private async Task ImportAccountAsync()
     {
         if (Busy) return;
         Busy = true;
-        StatusBar = "正在派生 auth key…";
+        ImportStatus = "正在连接验证…";
+        StatusBar = "正在导入并验证账号…";
         try
         {
             var progress = new Progress<string>(AppendLog);
-            int dc = DeriveDcIndex + 1;
-            int count = (int)decimal.Clamp(DeriveCount ?? 1, 1, 12);
-            var created = await AuthKeyManager.DeriveAsync(_engine.Pool, dc, count, progress, CancellationToken.None);
-            AppendLog($"派生完成：DC{dc} 新增 {created.Count} 条");
-            RefreshAuthKeys();
-            StatusBar = $"派生完成，新增 {created.Count} 条";
+            var acc = await AuthKeyManager.ImportAndVerifyAsync(
+                ImportHex, ImportDcIndex + 1, _engine.Pool.Options, _engine.Pool, progress, CancellationToken.None);
+
+            ImportHex = "";
+            ShowImport = false;
+            ImportStatus = $"验证通过：{acc.Title}";
+            AppendLog($"账号「{acc.Title}」导入成功（user_id {acc.UserId}，主 DC{acc.HomeDc}）");
+            RefreshAccounts();
+            StatusBar = $"账号「{acc.Title}」已导入并验证";
         }
         catch (Exception ex)
         {
-            AppendLog("派生失败：" + ex.Message);
-            StatusBar = "派生失败：" + ex.Message;
+            ImportStatus = ex.Message;
+            AppendLog("导入失败：" + ex.Message);
+            StatusBar = "导入失败：" + ex.Message;
         }
         finally
         {
@@ -435,28 +465,51 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private void RemoveAccount(AccountItemViewModel vm)
+    {
+        AccountStore.Remove(vm.Account.Id);
+        _ = _engine.Pool.DropAccountAsync(vm.Account.Id);
+        AppendLog($"已删除账号「{vm.Title}」");
+        RefreshAccounts();
+    }
+
+    private async void VerifyAccount(AccountItemViewModel vm)
+    {
+        try
+        {
+            var progress = new Progress<string>(AppendLog);
+            await AuthKeyManager.VerifyAsync(_engine.Pool, vm.Account, progress, CancellationToken.None);
+            RefreshAccounts();
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"账号「{vm.Title}」验证失败：{ex.Message}");
+            StatusBar = $"验证失败：{ex.Message}";
+        }
+    }
+
     [RelayCommand]
-    private void ClearKeys()
+    private void ClearAccounts()
     {
         if (!_clearArmed || (DateTime.UtcNow - _clearArmedAt).TotalSeconds > 5)
         {
             _clearArmed = true;
             _clearArmedAt = DateTime.UtcNow;
-            ClearKeysLabel = "再点一次确认";
-            StatusBar = "再点一次「清空全部」确认清空所有 auth key";
+            ClearAccountsLabel = "再点一次确认";
+            StatusBar = "再点一次「清空全部」确认删除所有账号";
             _ = Task.Delay(5000).ContinueWith(_ => _ui.Post(() =>
             {
                 _clearArmed = false;
-                ClearKeysLabel = "清空全部";
+                ClearAccountsLabel = "清空全部";
             }));
             return;
         }
         _clearArmed = false;
-        ClearKeysLabel = "清空全部";
-        AuthKeyStore.ClearAll();
+        ClearAccountsLabel = "清空全部";
+        AccountStore.ClearAll();
         EntityStore.Reload();
-        AppendLog("已清空所有 auth key");
-        RefreshAuthKeys();
+        AppendLog("已清空所有账号");
+        RefreshAccounts();
         StatusBar = "已清空";
     }
 
@@ -470,7 +523,6 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         {
             var n = await _engine.SyncDialogsAsync(10, CancellationToken.None);
             StatusBar = $"同步完成，缓存 {n} 个会话";
-            RefreshAuthKeys();
         }
         catch (Exception ex)
         {
@@ -491,10 +543,11 @@ public sealed partial class MainViewModel : ObservableObject, IAsyncDisposable
         var settings = Settings.ToSettings();
         SettingsStore.Save(settings);
         _engine.Pool.ApplySettings(settings);
-        AppendLog($"设置已保存：{settings.AuthKeyCount} 条 key × 每条 {settings.ConcurrencyPerKey} 并发，" +
+        AppendLog($"设置已保存：{settings.AccountCount} 个账号 × 每个 {settings.ConcurrencyPerAccount} 并发，" +
                   $"分片 {settings.ChunkSize / 1024} KiB，下载目录 {settings.EffectiveDownloadDir}");
         StatusBar = "设置已保存";
         Settings.LoadFrom(settings);
+        RefreshAccounts();
     }
 
     [RelayCommand]

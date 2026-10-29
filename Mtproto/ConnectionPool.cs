@@ -8,8 +8,10 @@ using tgdl.Storage;
 namespace tgdl.Mtproto;
 
 /// <summary>
-/// 连接池：按 (DC, auth key) 缓存长连接。
-/// 下载时反复复用，省掉每次建连/DH 的开销（README 里「服务态」那部分）。
+/// 连接池：按 (账号, DC) 缓存长连接，一个账号在一个 DC 上只占一条 TCP。
+///
+/// 关键点：**派生 key 必须挂在自己账号名下**。拿 A 账号导出的 key 去顶 B 账号的连接，
+/// 看起来是 N 个账号并行，实际只有一个账号在干活（限流额度也只有一份）。
 /// </summary>
 public sealed class ConnectionPool : IAsyncDisposable
 {
@@ -18,10 +20,7 @@ public sealed class ConnectionPool : IAsyncDisposable
     private readonly MtpClientOptions _opt = new();
     private bool _disposed;
 
-    /// <summary>进程内已知的服务器时间偏移（秒），由 DH / 收到的消息更新。</summary>
     public static long KnownTimeOffset;
-
-    public static long HomeDc => AuthKeyStore.HomeDc ?? 0;
 
     public MtpClientOptions Options => _opt;
 
@@ -31,30 +30,28 @@ public sealed class ConnectionPool : IAsyncDisposable
         _opt.ApiHash = settings.ApiHash;
     }
 
-    private static string KeyOf(int dcId, string keyHex) => dcId + ":" + keyHex;
+    private static string KeyOf(string accountId, int dcId) => accountId + ":" + dcId;
 
     public int ConnectionCount
     {
         get { lock (_conns) return _conns.Count; }
     }
 
-    public IReadOnlyList<string> ConnectionLabels
+    /// <summary>拿一条"某账号在某 DC"的连接（没有就新建）。</summary>
+    public async Task<MtpConnection> GetAsync(Account account, int dcId, CancellationToken ct)
     {
-        get { lock (_conns) return _conns.Keys.ToList(); }
-    }
-
-    /// <summary>拿一条指定 DC + 指定 key 的连接（没有就新建）。</summary>
-    public async Task<MtpConnection> GetAsync(int dcId, string keyHex, CancellationToken ct)
-    {
-        var id = KeyOf(dcId, keyHex);
+        var id = KeyOf(account.Id, dcId);
         lock (_conns)
         {
             if (_conns.TryGetValue(id, out var existing) && !existing.IsDead)
                 return existing;
         }
 
-        var key = AuthKey.FromHex(keyHex);
+        var hex = account.KeyFor(dcId)
+                  ?? throw new NeedAuthKeyException(dcId, $"账号「{account.Title}」在 DC{dcId} 上没有 key");
+        var key = AuthKey.FromHex(hex);
         var conn = await MtpConnection.ConnectWithKeyAsync(dcId, key, KnownTimeOffset, _opt, ct).ConfigureAwait(false);
+
         await _gate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
@@ -62,7 +59,6 @@ public sealed class ConnectionPool : IAsyncDisposable
             {
                 if (!old.IsDead)
                 {
-                    // 别人先建好了，用别人的
                     await conn.DisposeAsync().ConfigureAwait(false);
                     return old;
                 }
@@ -77,18 +73,10 @@ public sealed class ConnectionPool : IAsyncDisposable
         }
     }
 
-    /// <summary>控制连接：home DC + 主 key。</summary>
-    public Task<MtpConnection> GetControlAsync(CancellationToken ct)
+    /// <summary>把一条已握手/已授权的连接收进池子。</summary>
+    public async Task AdoptAsync(Account account, int dcId, MtpConnection conn)
     {
-        var home = AuthKeyStore.HomeDc ?? throw new MtpException("还没有任何 auth key，先导入一个");
-        var primary = AuthKeyStore.PrimaryKeyHex ?? throw new MtpException("home DC 上没有可用的 auth key");
-        return GetAsync(home, primary, ct);
-    }
-
-    /// <summary>把一条已经握手/授权好的连接收进池子（派生 key 之后用）。</summary>
-    public async Task AdoptAsync(int dcId, string keyHex, MtpConnection conn)
-    {
-        var id = KeyOf(dcId, keyHex);
+        var id = KeyOf(account.Id, dcId);
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -109,29 +97,37 @@ public sealed class ConnectionPool : IAsyncDisposable
         }
     }
 
-    public async Task DropAsync(int dcId, string keyHex)
+    public sealed record AccountConnection(Account Account, MtpConnection Conn);
+
+    /// <summary>为下载准备连接：每个账号一条。死掉的连接会被自动换成新的。</summary>
+    public async Task<List<AccountConnection>> GetDownloadConnectionsAsync(IReadOnlyList<Account> accounts, int dcId,
+        IProgress<string>? progress, CancellationToken ct)
     {
-        var id = KeyOf(dcId, keyHex);
-        MtpConnection? conn = null;
-        await _gate.WaitAsync().ConfigureAwait(false);
-        try
+        var result = new List<AccountConnection>();
+        var tasks = new List<(Account Account, Task<MtpConnection> Task)>();
+        foreach (var acc in accounts)
         {
-            if (_conns.Remove(id, out var c)) conn = c;
+            if (acc.KeyFor(dcId) == null) continue;
+            tasks.Add((acc, GetAsync(acc, dcId, ct)));
         }
-        finally
+        foreach (var (acc, task) in tasks)
         {
-            _gate.Release();
+            try { result.Add(new AccountConnection(acc, await task.ConfigureAwait(false))); }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { progress?.Report($"账号「{acc.Title}」连接失败：{ex.Message}"); }
         }
-        if (conn != null) await conn.DisposeAsync().ConfigureAwait(false);
+        if (result.Count == 0)
+            throw new NeedAuthKeyException(dcId, $"没有任何账号能在 DC{dcId} 上建立连接");
+        return result;
     }
 
-    public async Task DropDcAsync(int dcId)
+    public async Task DropAccountAsync(string accountId)
     {
         List<MtpConnection> list = new();
         await _gate.WaitAsync().ConfigureAwait(false);
         try
         {
-            foreach (var key in _conns.Keys.Where(k => k.StartsWith(dcId + ":", StringComparison.Ordinal)).ToList())
+            foreach (var key in _conns.Keys.Where(k => k.StartsWith(accountId + ":", StringComparison.Ordinal)).ToList())
             {
                 if (_conns.Remove(key, out var c)) list.Add(c);
             }
@@ -143,52 +139,6 @@ public sealed class ConnectionPool : IAsyncDisposable
         foreach (var c in list) await c.DisposeAsync().ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// 为下载准备最多 want 条连接（每条一个独立 auth key）。
-    /// 优先用缓存里的 key；不够就现场派生。
-    /// </summary>
-    public async Task<List<MtpConnection>> GetDownloadConnectionsAsync(int dcId, int want, IProgress<string>? progress,
-        CancellationToken ct)
-    {
-        want = Math.Clamp(want, 1, 12);
-        var keys = AuthKeyStore.KeysFor(dcId).ToList();
-
-        string? deriveError = null;
-        if (keys.Count < want)
-        {
-            try
-            {
-                var derived = await AuthKeyManager.DeriveAsync(this, dcId, want - keys.Count, progress, ct).ConfigureAwait(false);
-                keys = AuthKeyStore.KeysFor(dcId).ToList();
-                if (derived.Count > 0)
-                    progress?.Report($"DC{dcId} 新派生 {derived.Count} 条 auth key");
-            }
-            catch (Exception ex)
-            {
-                deriveError = ex.Message;
-                progress?.Report($"派生 auth key 失败（继续用现有的 {keys.Count} 条）：{ex.Message}");
-            }
-        }
-
-        if (keys.Count == 0)
-            throw new NeedAuthKeyException(dcId,
-                $"DC{dcId} 上没有可用的 auth key" +
-                (deriveError == null ? "" : $"，自动派生也失败了（{deriveError}）") +
-                $"。请到「Auth Key」页导入一条 DC{dcId} 的 key。");
-
-        var use = keys.Take(want).ToList();
-        var tasks = use.Select(k => GetAsync(dcId, k, ct)).ToList();
-        var result = new List<MtpConnection>();
-        foreach (var t in tasks)
-        {
-            try { result.Add(await t.ConfigureAwait(false)); }
-            catch (Exception ex) { progress?.Report($"连接失败：{ex.Message}"); }
-        }
-        if (result.Count == 0) throw new MtpException($"DC{dcId} 连接全部失败");
-        return result;
-    }
-
-    /// <summary>关掉所有连接，但池子本身还能继续用（对应界面上的「停止」）。</summary>
     public async Task CloseAllAsync()
     {
         List<MtpConnection> list;

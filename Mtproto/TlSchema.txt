@@ -489,3 +489,4 @@ cf6f6db8|webPageAttributeUniqueStarGift|#:gift
 211a1788|webPageEmpty|!1:flags l:id 1.0?s:url
 7311ca11|webPageNotModified|!1:flags 1.0?i:cached_page_views
 b0d13e47|webPagePending|!1:flags l:id 1.0?s:url i:date
+7f077ad9|contacts.resolvedPeer|#:peer *#:chats *#:users

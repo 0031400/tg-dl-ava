@@ -8,155 +8,130 @@ using tgdl.Storage;
 namespace tgdl.Mtproto;
 
 /// <summary>
-/// auth key 管理：导入、派生（exportAuthorization + 新 DH + importAuthorization）、删除、清空。
+/// 账号 / auth key 管理。
 ///
-/// 两个坑（Python 版实测出来的）：
-/// 1. importAuthorization 不能并发，服务端只放行一条；
-/// 2. DH 握手可以并发，而且占绝大部分时间。
-/// 所以流程是「并行 DH + 串行导出/导入」。
+/// 导入流程：粘贴 hex + 选 DC → **立刻连上去验证**（`users.getUsers` 拿自己的身份）→
+/// 验证通过才落盘，并把 key 挂到对应账号名下。
 ///
-/// 目标 DC == 主 DC 时不能从自己导出授权，这里会「借道」另一台已经有授权的 DC 去导出；
-/// 服务端不接受就记住并回退（界面会提示只能用手上那几条 key）。
+/// 一个账号对一个 DC 只保留一条 key：主 DC 是登录时那条，别的 DC 用 export/import 派生一条就够
+/// （已经取消"多 auth key 下载"，并发靠"多个账号"而不是"多条 key"）。
 /// </summary>
 public static class AuthKeyManager
 {
-    /// <summary>借道派生被服务端拒绝过，就不再反复浪费握手时间。</summary>
-    private static bool _bridgeUnsupported;
-
-    public static bool BridgeUnsupported => _bridgeUnsupported;
-
-    public static void Import(string hex, int dcId, bool setHome)
+    /// <summary>导入一条 key：连接验证 → 识别账号 → 落盘。</summary>
+    public static async Task<Account> ImportAndVerifyAsync(string hex, int dcId, MtpClientOptions opt,
+        ConnectionPool? pool, IProgress<string>? progress, CancellationToken ct)
     {
         var key = AuthKey.FromHex(hex);
-        if (!AuthKeyStore.Add(dcId, key.Hex))
-            throw new MtpException($"这条 key 已经在 DC{dcId} 里了");
-        if (setHome || AuthKeyStore.HomeDc == null)
-        {
-            var ip = DcOptions.Addresses(dcId).FirstOrDefault();
-            AuthKeyStore.SetHome(dcId, ip, DcOptions.Port);
-        }
-    }
+        progress?.Report($"正在连接 DC{dcId} 验证这条 key…");
 
-    /// <summary>从主 key 派生 count 条目标 DC 的独立 auth key。</summary>
-    public static async Task<List<string>> DeriveAsync(ConnectionPool pool, int targetDc, int count,
-        IProgress<string>? progress, CancellationToken ct)
-    {
-        if (count <= 0) return new List<string>();
-        var home = AuthKeyStore.HomeDc
-                   ?? throw new NeedAuthKeyException(null, "还没有主 auth key，无法派生。请先在「Auth Key」页导入一条。");
-
-        MtpConnection control;
-        if (home != targetDc)
-        {
-            control = await pool.GetControlAsync(ct).ConfigureAwait(false);
-        }
-        else
-        {
-            if (_bridgeUnsupported)
-                throw new MtpException($"DC{targetDc} 是主 DC，之前尝试过借道其他 DC 导出也被拒绝，不再重试");
-            control = await GetBridgeConnectionAsync(pool, targetDc, progress, ct).ConfigureAwait(false);
-        }
-
-        // 先探一次导出：这一步很便宜（一个 rpc），但能提前发现"根本不允许导出"，
-        // 避免先做 2~5 秒 DH 握手再失败。
-        (long Id, byte[] Bytes) preflight;
+        var conn = await MtpConnection.ConnectWithKeyAsync(dcId, key, ConnectionPool.KnownTimeOffset, opt, ct)
+            .ConfigureAwait(false);
+        MtpApi.SelfInfo self;
         try
         {
-            preflight = await MtpApi.ExportAuthorizationAsync(control, targetDc, ct).ConfigureAwait(false);
+            self = await MtpApi.GetSelfAsync(conn, ct).ConfigureAwait(false);
         }
-        catch (RpcException ex) when (ex.Text.Contains("USER_MIGRATE", StringComparison.Ordinal))
+        catch (RpcException ex) when (ex.Code == 401)
         {
-            if (home == targetDc)
-            {
-                _bridgeUnsupported = true;
-                throw new MtpException(
-                    $"DC{targetDc} 是主 DC，服务端明确不允许导出它的授权（{ex.Text}）：" +
-                    $"「{ex.Text}」表示这个账号只能在 DC{targetDc} 上操作，所以换个 DC 去导出也没用。" +
-                    $"主 DC 只能用登录时产生的那几条 key，下载其他 DC 的文件时才需要多条 key。");
-            }
+            await conn.DisposeAsync().ConfigureAwait(false);
+            throw new NeedAuthKeyException(dcId,
+                $"这条 key 无效或已失效（{ex.Text}）：DC{dcId} 不认识它，或者它已经被服务端重置");
+        }
+        catch
+        {
+            await conn.DisposeAsync().ConfigureAwait(false);
             throw;
         }
 
-        var opt = pool.Options;
-        progress?.Report($"导出授权成功，并行对 DC{targetDc} 做 {count} 次 DH 握手…");
-
-        // 1) 并行握手
-        var blankTasks = Enumerable.Range(0, count)
-            .Select(_ => MtpConnection.HandshakeAsync(targetDc, opt, ct))
-            .ToList();
-        var blanks = new List<MtpConnection>();
-        foreach (var t in blankTasks)
+        var existing = AccountStore.FindByUserId(self.UserId);
+        Account account;
+        if (existing != null)
         {
-            try { blanks.Add(await t.ConfigureAwait(false)); }
-            catch (Exception ex) { progress?.Report($"握手失败：{ex.Message}"); }
+            account = existing;
+            account.DisplayName = self.Display;
+            account.Username = self.Username ?? "";
+            account.LastOkAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            if (account.HomeDc == dcId) account.PrimaryKey = key.Hex;
+            else account.Keys[dcId.ToString()] = key.Hex;
+            AccountStore.Upsert(account);
+            progress?.Report($"这是已有账号「{account.Title}」，已把 DC{dcId} 的 key 挂到它名下");
         }
-        if (blanks.Count == 0) throw new MtpException("所有 DH 握手都失败了（多半是被限流，过一会儿再试）");
-
-        // 2) 串行导出 + 导入
-        var created = new List<string>();
-        int index = 0;
-        bool usePreflight = true;
-        foreach (var blank in blanks)
+        else
         {
-            index++;
-            try
+            account = new Account
             {
-                // 第一条直接用预检拿到的 token，后面每条导入前现导一次
-                var (id, bytes) = usePreflight
-                    ? preflight
-                    : await MtpApi.ExportAuthorizationAsync(control, targetDc, ct).ConfigureAwait(false);
-                usePreflight = false;
-                await MtpApi.ImportAuthorizationAsync(blank, id, bytes, ct).ConfigureAwait(false);
-                var hex = blank.Key.Hex;
-                AuthKeyStore.Add(targetDc, hex);
-                await pool.AdoptAsync(targetDc, hex, blank).ConfigureAwait(false);
-                created.Add(hex);
-                progress?.Report($"DC{targetDc} 第 {index}/{blanks.Count} 条 key 创建成功 {hex.Substring(0, 8)}");
-            }
-            catch (Exception ex)
-            {
-                usePreflight = false;
-                if (home == targetDc && ex is RpcException rpc)
-                {
-                    _bridgeUnsupported = true;
-                    progress?.Report($"服务端拒绝从其他 DC 导出主 DC 的授权（{rpc.Message}）——" +
-                                     "只能用手上已有的 key，不再尝试借道");
-                }
-                progress?.Report($"DC{targetDc} 第 {index}/{blanks.Count} 条创建失败：{ex.Message}");
-                await blank.DisposeAsync().ConfigureAwait(false);
-            }
+                UserId = self.UserId,
+                DisplayName = self.Display,
+                Username = self.Username ?? "",
+                HomeDc = dcId,
+                PrimaryKey = key.Hex,
+                LastOkAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds(),
+            };
+            AccountStore.Upsert(account);
+            progress?.Report($"新账号「{account.Title}」（user_id {self.UserId}，主 DC{dcId}）");
         }
 
-        if (created.Count == 0) throw new MtpException($"DC{targetDc} 一条 key 都没创建成功");
-        return created;
+        if (pool != null) await pool.AdoptAsync(account, dcId, conn).ConfigureAwait(false);
+        else await conn.DisposeAsync().ConfigureAwait(false);
+        return account;
     }
 
-    /// <summary>找一台"不是目标 DC"的已授权 DC 作为导出的出发点。</summary>
-    private static async Task<MtpConnection> GetBridgeConnectionAsync(ConnectionPool pool, int targetDc,
+    /// <summary>重新验证一个账号（连接 + 更新身份/时间）。</summary>
+    public static async Task VerifyAsync(ConnectionPool pool, Account account, IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        var conn = await pool.GetAsync(account, account.HomeDc, ct).ConfigureAwait(false);
+        var self = await MtpApi.GetSelfAsync(conn, ct).ConfigureAwait(false);
+        AccountStore.Update(account.Id, a =>
+        {
+            a.UserId = self.UserId;
+            a.DisplayName = self.Display;
+            a.Username = self.Username ?? "";
+            a.LastOkAt = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        });
+        progress?.Report($"账号「{self.Display}」验证通过（主 DC{account.HomeDc}）");
+    }
+
+    /// <summary>
+    /// 确保某个账号在目标 DC 上有 key：没有就用**该账号自己**的主连接导出授权、握手、导入一条。
+    /// 一个 DC 只留一条。
+    /// </summary>
+    public static async Task<string> EnsureDcKeyAsync(ConnectionPool pool, Account account, int dcId,
         IProgress<string>? progress, CancellationToken ct)
     {
-        var bridgeDc = PickBridgeDc(targetDc);
-        if (AuthKeyStore.CountFor(bridgeDc) == 0)
+        var existing = account.KeyFor(dcId);
+        if (existing != null) return existing;
+
+        if (dcId == account.HomeDc)
+            throw new NeedAuthKeyException(dcId, $"账号「{account.Title}」在它的主 DC 上没有 key");
+
+        progress?.Report($"账号「{account.Title}」在 DC{dcId} 还没有 key，正在派生…");
+
+        // 导出必须走这个账号自己的主连接
+        var control = await pool.GetAsync(account, account.HomeDc, ct).ConfigureAwait(false);
+        var (authId, bytes) = await MtpApi.ExportAuthorizationAsync(control, dcId, ct).ConfigureAwait(false);
+
+        var blank = await MtpConnection.HandshakeAsync(dcId, pool.Options, ct).ConfigureAwait(false);
+        try
         {
-            progress?.Report($"主 DC{targetDc} 不能从自己导出授权，先借道 DC{bridgeDc}：给它派生 1 条 key…");
-            await DeriveAsync(pool, bridgeDc, 1, progress, ct).ConfigureAwait(false);
+            await MtpApi.ImportAuthorizationAsync(blank, authId, bytes, ct).ConfigureAwait(false);
         }
-        var keys = AuthKeyStore.KeysFor(bridgeDc);
-        if (keys.Count == 0) throw new MtpException($"中转 DC{bridgeDc} 上没有可用 key");
-        progress?.Report($"借道 DC{bridgeDc} 导出 DC{targetDc} 的授权…");
-        return await pool.GetAsync(bridgeDc, keys[0], ct).ConfigureAwait(false);
+        catch
+        {
+            await blank.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        var hex = blank.Key.Hex;
+        account.SetKeyFor(dcId, hex);
+        AccountStore.Update(account.Id, a => a.SetKeyFor(dcId, hex));
+        await pool.AdoptAsync(account, dcId, blank).ConfigureAwait(false);
+        progress?.Report($"账号「{account.Title}」的 DC{dcId} key 已就绪（{hex.Substring(0, 8)}…）");
+        return hex;
     }
 
-    private static int PickBridgeDc(int targetDc)
-    {
-        foreach (var dc in AuthKeyStore.DcIds)
-        {
-            if (dc != targetDc && DcOptions.IsKnown(dc)) return dc;
-        }
-        foreach (var dc in new[] { 4, 5, 2, 1, 3 })
-        {
-            if (dc != targetDc) return dc;
-        }
-        throw new MtpException("找不到可用的中转 DC");
-    }
+    public static void Remove(string accountId) => AccountStore.Remove(accountId);
+
+    public static void ClearAll() => AccountStore.ClearAll();
 }

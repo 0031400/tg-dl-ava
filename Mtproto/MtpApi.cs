@@ -1,6 +1,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -313,6 +314,132 @@ public static class MtpApi
         }
 
         throw new MtpException($"这条消息的媒体类型不支持下载（{media.Name}）");
+    }
+
+    // ---------------------------------------------------------------- 账号身份
+
+    public sealed record SelfInfo(long UserId, string FirstName, string LastName, string? Username)
+    {
+        public string Display
+        {
+            get
+            {
+                var name = (FirstName + " " + LastName).Trim();
+                if (name.Length == 0) name = Username ?? UserId.ToString();
+                return name;
+            }
+        }
+    }
+
+    /// <summary>验证一条 key 是否有效，并拿到账号身份（users.getUsers + inputUserSelf）。</summary>
+    public static async Task<SelfInfo> GetSelfAsync(MtpConnection conn, CancellationToken ct)
+    {
+        var w = new TlWriter();
+        w.WriteUInt(TlIds.UsersGetUsers);
+        w.WriteVectorHeader(1);
+        w.WriteUInt(TlIds.InputUserSelf);
+        var res = await conn.InvokeAsync(w.ToArray(), true, ct);
+
+        foreach (var v in new TlReader(res).ReadNodeVector())
+        {
+            var user = v.AsNode();
+            if (user == null || user.Id != TlIds.User) continue;
+            long id = user["id"].AsLong();
+            if (id == 0) continue;
+            return new SelfInfo(
+                id,
+                user.Has("first_name") ? user["first_name"].AsString() : "",
+                user.Has("last_name") ? user["last_name"].AsString() : "",
+                user.Has("username") ? user["username"].AsString() : null);
+        }
+        throw new MtpException("users.getUsers 没有返回当前账号信息（key 可能无效）");
+    }
+
+    /// <summary>
+    /// 用 username 反查会话（拿到"这个账号视角"的 access_hash）。
+    /// 公开频道/用户即使没加也能读，所以这是"没同步过会话列表"时最省事的定位办法。
+    /// </summary>
+    public static async Task<ChatEntity?> ResolveUsernameAsync(MtpConnection conn, string username, CancellationToken ct)
+    {
+        var w = new TlWriter();
+        w.WriteUInt(TlIds.ContactsResolveUsername).WriteInt(0);   // flags
+        w.WriteString(username);
+        var res = await conn.InvokeAsync(w.ToArray(), true, ct);
+        var node = new TlReader(res).ReadNode();
+        if (node.Id != TlIds.ContactsResolvedPeer) return null;
+
+        foreach (var v in node["chats"].AsVector())
+        {
+            var chat = v.AsNode();
+            if (chat == null) continue;
+            var e = ParseChat(chat);
+            if (e != null) return e;
+        }
+        foreach (var v in node["users"].AsVector())
+        {
+            var user = v.AsNode();
+            if (user == null) continue;
+            var e = ParseUser(user);
+            if (e != null) return e;
+        }
+        return null;
+    }
+
+    // ---------------------------------------------------------------- 相册/多文件
+
+    public sealed record MediaEntry(int MessageId, string FileName, long Size, bool IsPhoto, string? Mime);
+
+    /// <summary>
+    /// 取一条消息里的可下载媒体。如果它属于一个相册（grouped_id），把同一个相册里的
+    /// 其它消息也一起找出来，让用户多选。
+    /// </summary>
+    public static async Task<List<MediaEntry>> GetMessageMediaListAsync(MtpConnection conn, PeerRef peer,
+        int messageId, CancellationToken ct)
+    {
+        var first = await GetMessageAsync(conn, peer, messageId, ct);
+        long grouped = first.Has("grouped_id") ? first["grouped_id"].AsLong() : 0;
+        var nodes = new List<TlNode> { first };
+
+        if (grouped != 0)
+        {
+            var w = new TlWriter();
+            w.WriteUInt(TlIds.MessagesGetHistory);
+            WriteInputPeer(w, peer);
+            w.WriteInt(messageId + 10);   // offset_id：从消息后面一点开始往下翻
+            w.WriteInt(0);                // offset_date
+            w.WriteInt(0);                // add_offset
+            w.WriteInt(20);               // limit
+            w.WriteInt(0);                // max_id
+            w.WriteInt(0);                // min_id
+            w.WriteLong(0);               // hash
+            var res = await conn.InvokeAsync(w.ToArray(), true, ct);
+            var page = new TlReader(res).ReadNode();
+            foreach (var v in page["messages"].AsVector())
+            {
+                var m = v.AsNode();
+                if (m == null) continue;
+                if (m.Id != TlIds.Message && m.Id != TlIds.MessageService) continue;
+                if (!m.Has("grouped_id") || m["grouped_id"].AsLong() != grouped) continue;
+                int mid = m["id"].AsInt();
+                if (nodes.Any(x => x["id"].AsInt() == mid)) continue;
+                nodes.Add(m);
+            }
+        }
+
+        var list = new List<MediaEntry>();
+        foreach (var m in nodes.OrderBy(x => x["id"].AsInt()))
+        {
+            try
+            {
+                var media = ExtractMedia(m);
+                list.Add(new MediaEntry(m["id"].AsInt(), media.FileName, media.Size, media.IsPhoto, media.MimeType));
+            }
+            catch
+            {
+                // 这条没有可下载的媒体，跳过
+            }
+        }
+        return list;
     }
 
     // ---------------------------------------------------------------- 下载分片

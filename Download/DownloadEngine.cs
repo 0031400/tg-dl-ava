@@ -156,36 +156,31 @@ public sealed class DownloadEngine : IAsyncDisposable
 
         try
         {
-            var home = AuthKeyStore.HomeDc
-                       ?? throw new NeedAuthKeyException(null, "还没有 auth key：请到「Auth Key」页导入一条（或把 data/authkeys.json 拷进来）");
-            if (AuthKeyStore.PrimaryKeyHex == null)
-                throw new NeedAuthKeyException(home, $"主 DC{home} 上没有可用的 auth key，请导入一条");
+            var accounts = AccountStore.SelectForUse(settings.AccountCount);
+            if (accounts.Count == 0)
+                throw new NeedAuthKeyException(null,
+                    "还没有导入任何账号：请到右侧「账号」页导入一条 auth key（导入时会自动连接验证）");
 
-            int want = Math.Clamp(settings.AuthKeyCount, 1, 12);
-
-            // 先用主连接确认 key 真的能用（不是过期/被重置的）
-            var control = await _pool.GetControlAsync(token).ConfigureAwait(false);
-            await MtpApi.GetConfigAsync(control, token).ConfigureAwait(false);
-            Emit($"主连接就绪：DC{home}（auth_key {control.Key.ShortHex}…）");
-
-            // 主 DC 不能派生新 key（见 AuthKeyManager 的说明），所以只把已有的 key 连上；
-            // 「设置的数量」对主 DC 来说最多只能到"你实际拥有的 key 数"。
-            var homeKeys = AuthKeyStore.KeysFor(home);
-            int made = 1;
-            foreach (var k in homeKeys.Skip(1).Take(Math.Max(0, want - 1)))
+            int ok = 0;
+            foreach (var acc in accounts)
             {
-                await _pool.GetAsync(home, k, token).ConfigureAwait(false);
-                made++;
+                try
+                {
+                    await AuthKeyManager.VerifyAsync(_pool, acc, progress, token).ConfigureAwait(false);
+                    ok++;
+                }
+                catch (Exception ex)
+                {
+                    Emit($"账号「{acc.Title}」验证失败：{ex.Message}");
+                }
             }
-            if (made < want)
-            {
-                Emit($"主 DC{home} 只有 {made} 条可用 key（设置要求 {want} 条）。" +
-                     $"主 DC 无法派生更多 —— 只有登录时产生的那些 key 能用；" +
-                     $"下载其他 DC 的文件时会自动派生到 {want} 条。");
-            }
-            Emit($"DC{home} 连接就绪：{made} 条");
+            if (ok == 0)
+                throw new NeedAuthKeyException(null, "选中的账号一个都没连上，请检查 auth key 是否还有效");
 
-            SetSession(SessionState.Ready, $"DC{home} · {made} 条连接");
+            if (accounts.Count < settings.AccountCount)
+                Emit($"只有 {accounts.Count} 个账号可用（设置要求 {settings.AccountCount} 个），按实际数量使用");
+
+            SetSession(SessionState.Ready, $"{ok} 个账号就绪");
             _signal.Release();
         }
         catch (OperationCanceledException)
@@ -196,8 +191,8 @@ public sealed class DownloadEngine : IAsyncDisposable
         catch (RpcException rex) when (rex.Code == 401)
         {
             SetSession(SessionState.Failed, "auth key 无效");
-            throw new NeedAuthKeyException(AuthKeyStore.HomeDc,
-                $"auth key 无效或已被服务端重置（{rex.Text}），请重新导入一条 DC{AuthKeyStore.HomeDc} 的 key");
+            throw new NeedAuthKeyException(null,
+                $"auth key 无效或已被服务端重置（{rex.Text}），请重新导入");
         }
         catch (Exception ex)
         {
@@ -417,7 +412,7 @@ public sealed class DownloadEngine : IAsyncDisposable
                     await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
                     break;
                 }
-                catch (LocationExpiredException) when (attempts <= 2)
+                catch (LocationExpiredException) when (attempts <= 5)
                 {
                     Emit("file_reference 过期，重新取一次消息…");
                     lock (_lock)
@@ -476,24 +471,72 @@ public sealed class DownloadEngine : IAsyncDisposable
         for (int attempt = 0; ; attempt++)
         {
             // 死掉的连接会在 GetAsync 里被自动替换成新的
-            var conns = await _pool.GetDownloadConnectionsAsync(task.DcId, settings.AuthKeyCount, progress, ct)
+            var accounts = await PrepareAccountsAsync(task.DcId, progress, ct).ConfigureAwait(false);
+            var pairs = await _pool.GetDownloadConnectionsAsync(accounts, task.DcId, progress, ct)
                 .ConfigureAwait(false);
+
+            // file_reference 和 access_hash 都是**账号作用域**的：拿 A 账号的给 B 账号用，
+            // 服务端会回 FILE_REFERENCE_INVALID / CHANNEL_INVALID。所以每个账号必须自己取一次消息。
+            var sources = new List<(MtpConnection Conn, byte[] Location)>();
+            foreach (var pair in pairs)
+            {
+                try
+                {
+                    // 取消息必须在**账号自己的主 DC**上：非主 DC 只放行文件类方法，
+                    // 在文件 DC 上调 messages/channels.getMessages 会回 303 USER_MIGRATE_<主DC>。
+                    var homeConn = await _pool.GetAsync(pair.Account, pair.Account.HomeDc, ct).ConfigureAwait(false);
+                    var peer = await ResolvePeerAsync(pair.Account, task.ChatId, progress, ct).ConfigureAwait(false);
+                    var message = await MtpApi.GetMessageAsync(homeConn, peer, task.MessageId, ct).ConfigureAwait(false);
+                    var media = MtpApi.ExtractMedia(message);
+                    // 下载仍然走文件所在 DC 的那条连接
+                    sources.Add((pair.Conn, media.Location));
+
+                    // 用第一个成功的账号回填展示信息
+                    if (task.Size <= 0)
+                    {
+                        task.Title = SanitizeFileName(media.FileName);
+                        task.Size = media.Size;
+                        task.DcId = media.DcId > 0 ? media.DcId : task.DcId;
+                        lock (_lock)
+                        {
+                            var t = _tasks.FirstOrDefault(x => x.Id == task.Id);
+                            if (t != null) { t.Title = task.Title; t.Size = task.Size; t.DcId = task.DcId; }
+                        }
+                    }
+                }
+                catch (OperationCanceledException) { throw; }
+                catch (Exception ex)
+                {
+                    Emit($"账号「{pair.Account.Title}」拿不到这个文件的定位信息，本次跳过：{ex.Message}");
+                }
+            }
+            if (sources.Count == 0)
+                throw new MtpException("所有账号都拿不到这个文件的定位信息（可能都不在该会话里）");
+
             Emit(attempt == 0
                 ? $"开始下载 {task.Title}（{FormatSize(task.Size)}，文件在 DC{task.DcId}，" +
-                  $"{conns.Count} 条连接 × {settings.ConcurrencyPerKey} 并发）"
+                  $"{sources.Count} 个账号 × {settings.ConcurrencyPerAccount} 并发）"
                 : $"继续下载 {task.Title}（已下 {FormatSize(task.Done)} / {FormatSize(task.Size)}，" +
-                  $"{conns.Count} 条连接）");
+                  $"{sources.Count} 条连接）");
 
             try
             {
-                await RunSessionAsync(task, conns, ct).ConfigureAwait(false);
+                await RunSessionAsync(task, sources, ct).ConfigureAwait(false);
                 break;
             }
             catch (ConnectionLostException lost) when (attempt < 5)
             {
-                int wait = (lost.IsFlood ? 4000 : 800) * (attempt + 1);
-                Emit($"连接断了（{lost.Message}），{wait / 1000.0:0.#} 秒后重连并从断点继续…");
-                await Task.Delay(wait, ct).ConfigureAwait(false);
+                // 普通断线立刻重连；只有被限流（-429）才退避，否则会一直撞限流
+                if (lost.IsFlood)
+                {
+                    int wait = 4000 * (attempt + 1);
+                    Emit($"连接断了（{lost.Message}），限流退避 {wait / 1000.0:0.#} 秒后重连…");
+                    await Task.Delay(wait, ct).ConfigureAwait(false);
+                }
+                else
+                {
+                    Emit($"连接断了（{lost.Message}），立刻重连并从断点继续…");
+                }
             }
             catch (FileMigrateException mig) when (attempt < 2)
             {
@@ -528,35 +571,121 @@ public sealed class DownloadEngine : IAsyncDisposable
         }
     }
 
+    /// <summary>取第一个要用的账号（取消息 / 同步会话列表这类"先探一下"的操作都用它）。</summary>
+    private static Account GetControlAccount()
+    {
+        var accounts = AccountStore.SelectForUse(SettingsStore.Current.AccountCount);
+        if (accounts.Count == 0)
+            throw new NeedAuthKeyException(null, "还没有导入任何账号");
+        return accounts[0];
+    }
+
+    private async Task<MtpConnection> GetControlAsync(CancellationToken ct)
+    {
+        var acc = GetControlAccount();
+        return await _pool.GetAsync(acc, acc.HomeDc, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>拿到"某账号视角下"的这个会话（access_hash 按账号隔离，缺了就同步这个账号的会话列表）。</summary>
+    private async Task<PeerRef> ResolvePeerAsync(Account account, long chatId, IProgress<string>? progress,
+        CancellationToken ct)
+    {
+        var peer = EntityStore.Resolve(account.Id, chatId);
+        if (peer != null) return peer.Value;
+
+        // 1) 先用别的账号见过的 username 反查：公开频道/用户即使没加也能读到 access_hash，
+        //    比同步整个会话列表快得多（也不用对方是成员）。
+        var username = EntityStore.FindUsername(chatId);
+        if (!string.IsNullOrEmpty(username))
+        {
+            try
+            {
+                var conn = await _pool.GetAsync(account, account.HomeDc, ct).ConfigureAwait(false);
+                var entity = await MtpApi.ResolveUsernameAsync(conn, username!, ct).ConfigureAwait(false);
+                if (entity != null)
+                {
+                    EntityStore.Put(account.Id, entity);
+                    var resolved = EntityStore.Resolve(account.Id, chatId);
+                    if (resolved != null)
+                    {
+                        progress?.Report($"账号「{account.Title}」通过 @{username} 拿到了 {chatId} 的定位信息");
+                        return resolved.Value;
+                    }
+                }
+                progress?.Report($"@{username} 反查到的不是这个会话，改用同步会话列表");
+            }
+            catch (Exception ex)
+            {
+                progress?.Report($"账号「{account.Title}」用 @{username} 反查失败：{ex.Message}");
+            }
+        }
+
+        // 2) 退回到同步它自己的会话列表
+        progress?.Report($"账号「{account.Title}」还没有 {chatId} 的 access_hash，同步一次它的会话列表…");
+        await SyncDialogsAsync(account, 3, ct).ConfigureAwait(false);
+        return EntityStore.Resolve(account.Id, chatId)
+               ?? throw new MtpException("不在这个会话里（或会话列表里没有它）");
+    }
+
     /// <summary>取消息 → 拿到文件名/大小/DC/位置。</summary>
     private async Task ResolveAsync(DownloadTask task, CancellationToken ct)
     {
-        var peer = EntityStore.Resolve(task.ChatId);
-        if (peer == null)
-        {
-            Emit($"本地没有 chat_id={task.ChatId} 的 access_hash，先同步会话列表…");
-            await SyncDialogsAsync(3, ct).ConfigureAwait(false);
-            peer = EntityStore.Resolve(task.ChatId);
-        }
-        if (peer == null)
-            throw new MtpException($"找不到 chat_id={task.ChatId}。请先点「同步会话列表」，并确认这个账号在该会话里");
+        var acc = GetControlAccount();
+        var peer = await ResolvePeerAsync(acc, task.ChatId, new Progress<string>(Emit), ct).ConfigureAwait(false);
 
-        var conn = await _pool.GetControlAsync(ct).ConfigureAwait(false);
-        var message = await MtpApi.GetMessageAsync(conn, peer.Value, task.MessageId, ct).ConfigureAwait(false);
+        var conn = await GetControlAsync(ct).ConfigureAwait(false);
+        var message = await MtpApi.GetMessageAsync(conn, peer, task.MessageId, ct).ConfigureAwait(false);
         var media = MtpApi.ExtractMedia(message);
 
         task.Title = SanitizeFileName(media.FileName);
         task.Size = media.Size;
-        task.DcId = media.DcId > 0 ? media.DcId : AuthKeyStore.HomeDc ?? 2;
+        task.DcId = media.DcId > 0 ? media.DcId : 2;
         task.Location = media.LocationBase64;
-        task.LocalPath = PickFreePath(SettingsStore.Current.EffectiveDownloadDir, task.Title);
+        // 路径只决定一次：重试/续传时如果换成 "xxx (1).mp4"，
+        // 分片位图会对不上新文件，导致下载出来的文件有空洞
+        if (string.IsNullOrEmpty(task.LocalPath))
+            task.LocalPath = PickFreePath(SettingsStore.Current.EffectiveDownloadDir, task.Title);
         Emit($"解析成功：{task.Title}（{FormatSize(task.Size)}，DC{task.DcId}）");
     }
 
-    /// <summary>同步会话列表，缓存 access_hash。</summary>
-    public async Task<int> SyncDialogsAsync(int maxPages, CancellationToken ct)
+    /// <summary>挑出要用的账号，并确保每个账号在目标 DC 上都有 key（缺的现场派生一条）。</summary>
+    private async Task<List<Account>> PrepareAccountsAsync(int dcId, IProgress<string>? progress, CancellationToken ct)
     {
-        var conn = await _pool.GetControlAsync(ct).ConfigureAwait(false);
+        var accounts = AccountStore.SelectForUse(SettingsStore.Current.AccountCount);
+        if (accounts.Count == 0) throw new NeedAuthKeyException(null, "还没有导入任何账号");
+
+        var usable = new List<Account>();
+        foreach (var acc in accounts)
+        {
+            if (acc.KeyFor(dcId) == null)
+            {
+                try { await AuthKeyManager.EnsureDcKeyAsync(_pool, acc, dcId, progress, ct).ConfigureAwait(false); }
+                catch (Exception ex)
+                {
+                    progress?.Report($"账号「{acc.Title}」在 DC{dcId} 不可用，本次跳过：{ex.Message}");
+                    continue;
+                }
+            }
+            if (acc.KeyFor(dcId) != null) usable.Add(acc);
+        }
+        if (usable.Count == 0)
+            throw new NeedAuthKeyException(dcId, $"没有任何账号能在 DC{dcId} 上取到文件");
+        return usable;
+    }
+
+    /// <summary>解析一条消息里的所有可下载媒体（相册会返回多条，供用户多选）。</summary>
+    public async Task<List<MtpApi.MediaEntry>> ResolveMediaListAsync(long chatId, int messageId, CancellationToken ct)
+    {
+        var acc = GetControlAccount();
+        var peer = await ResolvePeerAsync(acc, chatId, new Progress<string>(Emit), ct).ConfigureAwait(false);
+        var conn = await GetControlAsync(ct).ConfigureAwait(false);
+        return await MtpApi.GetMessageMediaListAsync(conn, peer, messageId, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>同步某个账号的会话列表（access_hash 是按账号算的，每个账号都要各自同步）。</summary>
+    public async Task<int> SyncDialogsAsync(Account account, int maxPages, CancellationToken ct)
+    {
+        var conn = await _pool.GetAsync(account, account.HomeDc, ct).ConfigureAwait(false);
         int total = 0;
         PeerRef? offsetPeer = null;
         int offsetDate = 0, offsetId = 0;
@@ -564,7 +693,7 @@ public sealed class DownloadEngine : IAsyncDisposable
         {
             var res = await MtpApi.GetDialogsAsync(conn, 100, offsetPeer, offsetDate, offsetId, ct).ConfigureAwait(false);
             if (res.Entities.Count == 0) break;
-            EntityStore.PutRange(res.Entities);
+            EntityStore.PutRange(account.Id, res.Entities);
             total += res.Entities.Count;
             if (res.LastPeer == null) break;
             offsetPeer = res.LastPeer;
@@ -572,7 +701,21 @@ public sealed class DownloadEngine : IAsyncDisposable
             offsetId = res.LastMsgId;
             if (res.Entities.Count < 100) break;
         }
-        Emit($"会话列表同步完成，缓存 {total} 个会话（本地共 {EntityStore.Count} 个）");
+        Emit($"账号「{account.Title}」会话列表同步完成，缓存 {total} 个（本地共 {EntityStore.Count} 条记录）");
+        return total;
+    }
+
+    /// <summary>把当前要用的账号都同步一遍。</summary>
+    public async Task<int> SyncDialogsAsync(int maxPages, CancellationToken ct)
+    {
+        var accounts = AccountStore.SelectForUse(SettingsStore.Current.AccountCount);
+        if (accounts.Count == 0) throw new NeedAuthKeyException(null, "还没有导入任何账号");
+        int total = 0;
+        foreach (var acc in accounts)
+        {
+            try { total += await SyncDialogsAsync(acc, maxPages, ct).ConfigureAwait(false); }
+            catch (Exception ex) { Emit($"账号「{acc.Title}」同步失败：{ex.Message}"); }
+        }
         return total;
     }
 
@@ -585,15 +728,15 @@ public sealed class DownloadEngine : IAsyncDisposable
         public Exception? Failure;
     }
 
-    private async Task RunSessionAsync(DownloadTask task, List<MtpConnection> conns, CancellationToken ct)
+    private async Task RunSessionAsync(DownloadTask task, List<(MtpConnection Conn, byte[] Location)> sources,
+        CancellationToken ct)
     {
         var settings = SettingsStore.Current;
         int chunk = NormalizeChunk(settings.ChunkSize);
         long size = task.Size;
         if (size <= 0) throw new MtpException("文件大小为 0");
-        if (string.IsNullOrEmpty(task.Location)) throw new MtpException("缺少文件定位信息");
+        if (sources.Count == 0) throw new MtpException("没有可用的连接");
 
-        var location = Convert.FromBase64String(task.Location);
         var path = task.LocalPath ??= PickFreePath(settings.EffectiveDownloadDir, task.Title);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
 
@@ -608,13 +751,15 @@ public sealed class DownloadEngine : IAsyncDisposable
             if (fs.Length != size) fs.SetLength(size);
 
             long already = 0;
-            var pending = new List<long>(chunkCount);
+            // 注意存的是**分片序号**，不是 offset：completed[] 也是按分片序号索引的，
+            // 之前存 offset 再拿列表下标去标记，续传时（pending 被压缩过）就会全错位。
+            var pending = new List<int>(chunkCount);
             for (int i = 0; i < chunkCount; i++)
             {
                 long off = (long)i * chunk;
                 long len = Math.Min(chunk, size - off);
                 if (completed[i]) already += len;
-                else pending.Add(off);
+                else pending.Add(i);
             }
             if (pending.Count == 0)
             {
@@ -624,8 +769,8 @@ public sealed class DownloadEngine : IAsyncDisposable
             if (already > 0) Emit($"续传：已有 {FormatSize(already)}，剩 {FormatSize(size - already)}");
 
             var st = state = new ChunkState { Done = already };
-            var limiters = conns.Select(_ => new AdaptiveLimiter(settings.ConcurrencyPerKey, settings.AdaptiveFlood)).ToList();
-            var connBytes = new long[conns.Count];
+            var limiters = sources.Select(_ => new AdaptiveLimiter(settings.ConcurrencyPerAccount, settings.AdaptiveFlood)).ToList();
+            var connBytes = new long[sources.Count];
 
             void Report(long done, SpeedSample? sample)
             {
@@ -655,9 +800,9 @@ public sealed class DownloadEngine : IAsyncDisposable
                         double dt = (now - lastTick) / (double)Stopwatch.Frequency;
                         lastTick = now;
                         if (dt <= 0) continue;
-                        var per = new double[conns.Count];
+                        var per = new double[sources.Count];
                         long window = 0;
-                        for (int i = 0; i < conns.Count; i++)
+                        for (int i = 0; i < sources.Count; i++)
                         {
                             long b = Interlocked.Exchange(ref connBytes[i], 0);
                             per[i] = b / dt;
@@ -670,13 +815,14 @@ public sealed class DownloadEngine : IAsyncDisposable
             }, CancellationToken.None);
 
             var workers = new List<Task>();
-            for (int ci = 0; ci < conns.Count; ci++)
+            for (int ci = 0; ci < sources.Count; ci++)
             {
                 int connIndex = ci;
-                for (int slot = 0; slot < settings.ConcurrencyPerKey; slot++)
+                for (int slot = 0; slot < settings.ConcurrencyPerAccount; slot++)
                 {
-                    workers.Add(Task.Run(() => WorkerAsync(connIndex, conns[connIndex], limiters[connIndex],
-                        connBytes, location, chunk, size, pending, completed, st, handle, sessionCts, ct), ct));
+                    workers.Add(Task.Run(() => WorkerAsync(connIndex, sources[connIndex].Conn, limiters[connIndex],
+                        connBytes, sources[connIndex].Location, chunk, size, pending, completed, st, handle,
+                        sessionCts, ct), ct));
                 }
             }
 
@@ -715,7 +861,7 @@ public sealed class DownloadEngine : IAsyncDisposable
 
     /// <summary>每个 worker 的循环：取一个偏移 → 限流 → 拉取 → 按偏移写盘。</summary>
     private async Task WorkerAsync(int connIndex, MtpConnection conn, AdaptiveLimiter limiter, long[] connBytes,
-        byte[] location, int chunk, long size, List<long> pending, bool[] completed,
+        byte[] location, int chunk, long size, List<int> pending, bool[] completed,
         ChunkState state, SafeFileHandle handle, CancellationTokenSource sessionCts, CancellationToken ct)
     {
         while (true)
@@ -723,7 +869,8 @@ public sealed class DownloadEngine : IAsyncDisposable
             if (ct.IsCancellationRequested) return;
             int i = Interlocked.Increment(ref state.Cursor);
             if (i >= pending.Count) return;
-            long offset = pending[i];
+            int chunkIndex = pending[i];
+            long offset = (long)chunkIndex * chunk;
             long remaining = size - offset;
             int expected = (int)Math.Min(chunk, remaining);
             // limit 必须永远传"整个分片"：Telegram 要求 limit 是 4096 的倍数，
@@ -755,7 +902,7 @@ public sealed class DownloadEngine : IAsyncDisposable
 
                 if (n < expected)
                     throw new MtpException($"分片不完整 offset={offset} 期望 {expected} 实际 {n}");
-                completed[i] = true;
+                completed[chunkIndex] = true;
             }
             catch (OperationCanceledException) { return; }
             catch (Exception ex)

@@ -12,11 +12,11 @@ public sealed class AppSettings
     public int ApiId { get; set; } = 2040;
     public string ApiHash { get; set; } = "b18441a1ff607e10a989891a5462e627";
 
-    /// <summary>同时使用多少条 auth key（每条 key 一条 TCP 连接）。</summary>
-    public int AuthKeyCount { get; set; } = 3;
+    /// <summary>同时使用多少个账号（一个账号一条 TCP）。不够就有几个用几个。</summary>
+    public int AccountCount { get; set; } = 3;
 
-    /// <summary>每条 key 的并发请求数。总并发 = AuthKeyCount × ConcurrencyPerKey。</summary>
-    public int ConcurrencyPerKey { get; set; } = 4;
+    /// <summary>每条连接（= 每个账号）的并发请求数，默认 3，最多 10。总并发 = AccountCount × 它。</summary>
+    public int ConcurrencyPerAccount { get; set; } = 3;
 
     /// <summary>分片大小（字节），512 KiB 是 Telegram 的推荐上限。</summary>
     public int ChunkSize { get; set; } = 512 * 1024;
@@ -60,6 +60,8 @@ public sealed class EntityRecord
 [JsonSerializable(typeof(AuthKeyFile))]
 [JsonSerializable(typeof(List<DownloadTask>))]
 [JsonSerializable(typeof(Dictionary<string, EntityRecord>))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSerializable(typeof(AccountFile))]
 internal sealed partial class AppJson : JsonSerializerContext
 {
 }

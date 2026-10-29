@@ -107,6 +107,18 @@ public sealed class TlReader
         return r;
     }
 
+    /// <summary>读一个顶层 Vector（有些方法直接返回 Vector&lt;User&gt; 这类）。</summary>
+    public TlValue[] ReadNodeVector()
+    {
+        uint id = ReadUInt();
+        if (id != VectorCtorId) throw new TlException($"期望顶层 vector，收到 0x{id:x8}");
+        int count = ReadInt();
+        if (count < 0 || count > 100000) throw new TlException($"vector 长度异常 {count}");
+        var items = new TlValue[count];
+        for (int i = 0; i < count; i++) items[i] = TlValue.FromNode(ReadNode());
+        return items;
+    }
+
     /// <summary>读一个构造函数并展开成节点。</summary>
     public TlNode ReadNode()
     {

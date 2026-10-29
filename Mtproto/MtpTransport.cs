@@ -28,6 +28,8 @@ public sealed class MtpTransport : IAsyncDisposable
 
     public string Remote { get; private set; } = "";
 
+    public string RemoteIp { get; private set; } = "";
+
     public static async Task<MtpTransport> ConnectAsync(string ip, int port, TimeSpan timeout, CancellationToken ct)
     {
         var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp)
@@ -46,7 +48,7 @@ public sealed class MtpTransport : IAsyncDisposable
             throw;
         }
         var stream = new NetworkStream(socket, ownsSocket: true);
-        var t = new MtpTransport(socket, stream) { Remote = $"{ip}:{port}" };
+        var t = new MtpTransport(socket, stream) { Remote = $"{ip}:{port}", RemoteIp = ip };
         var tag = new byte[4];
         BinaryPrimitives.WriteUInt32LittleEndian(tag, IntermediateTag);
         await stream.WriteAsync(tag, ct).ConfigureAwait(false);

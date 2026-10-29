@@ -90,13 +90,14 @@ public sealed class MtpConnection : IAsyncDisposable
         for (int round = 0; round < 2; round++)
         {
             if (round > 0) await Task.Delay(1200, ct).ConfigureAwait(false);
-            foreach (var ip in DcOptions.Addresses(dcId))
+            foreach (var ip in DcIpMemory.Candidates(dcId))
             {
                 MtpTransport? transport = null;
                 try
                 {
                     transport = await MtpTransport.ConnectAsync(ip, DcOptions.Port, TimeSpan.FromSeconds(15), ct).ConfigureAwait(false);
                     var hs = await DhHandshake.RunAsync(transport, ct).ConfigureAwait(false);
+                    DcIpMemory.Remember(dcId, transport.RemoteIp);
                     var conn = new MtpConnection(transport, hs.Key, dcId, hs.TimeOffsetSeconds, opt);
                     conn.Start();
                     return conn;
@@ -115,7 +116,8 @@ public sealed class MtpConnection : IAsyncDisposable
     private static async Task<MtpTransport> ConnectTransportAsync(int dcId, CancellationToken ct)
     {
         Exception? last = null;
-        foreach (var ip in DcOptions.Addresses(dcId))
+        // 上次连通的 IP 排最前，省得每次挨个试
+        foreach (var ip in DcIpMemory.Candidates(dcId))
         {
             try
             {
@@ -227,6 +229,8 @@ public sealed class MtpConnection : IAsyncDisposable
                 using var reg = ct.Register(static s => ((TaskCompletionSource<byte[]>)s!).TrySetCanceled(), tcs);
                 var result = await tcs.Task.ConfigureAwait(false);
                 _initSent = true;
+                // 第一次真的收到响应才算"这个 IP 可用"
+                DcIpMemory.Remember(DcId, _t.RemoteIp);
                 return result;
             }
             catch (BadSaltException)

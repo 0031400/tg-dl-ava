@@ -47,6 +47,8 @@ public sealed class MtpConnection : IAsyncDisposable
     private long _timeOffset;
     private long _lastMsgId;
     private int _seqNo;
+    private int _badMsgCount;
+    private readonly string _sid;
     private volatile bool _initSent;
     private volatile bool _dead;
     private Task? _recv;
@@ -60,6 +62,7 @@ public sealed class MtpConnection : IAsyncDisposable
         _timeOffset = timeOffset;
         _opt = opt;
         _sessionId = BinaryPrimitives.ReadUInt64LittleEndian(RandomNumberGenerator.GetBytes(8));
+        _sid = (_sessionId & 0xFF).ToString("x2");
     }
 
     public AuthKey Key => _key;
@@ -149,46 +152,70 @@ public sealed class MtpConnection : IAsyncDisposable
         }
     }
 
-    private async Task<long> SendEncryptedAsync(byte[] body, bool contentRelated, Action<long>? beforeWrite, CancellationToken ct)
+    /// <summary>分配一个 content-related 的 seq_no（1, 3, 5…）。一条逻辑请求只分配一次。</summary>
+    private int AllocSeqNo() => Interlocked.Add(ref _seqNo, 2) - 1;
+
+    /// <summary>
+    /// 非内容消息（msgs_ack 等）的 seq_no = 2 × 已发内容消息数，**不是 0**。
+    /// 发 0 的话服务端会判 "seq_no too low"(32) 把 ack 全拒了，然后不停重发未确认的消息，
+    /// 最后直接把连接踢掉（表现为 Unable to read beyond the end of the stream）。
+    /// </summary>
+    private int CurrentNonContentSeqNo() => Volatile.Read(ref _seqNo);
+
+    /// <summary>
+    /// 发送一条加密消息。
+    ///
+    /// **msg_id 和 seq_no 都必须在写锁内按"实际发送顺序"分配**：并发调用时如果先在锁外分配、
+    /// 再抢锁发送，顺序就会乱，服务端会判 msg_id/seq_no too low。
+    ///
+    /// 重试时也重新分配 seq_no（传 null），不要复用：被拒的消息不计入服务端计数，
+    /// 而并发期间别的请求已经分配了更大的号，复用旧号会被判 "seq_no too low"。
+    /// </summary>
+    private async Task<(long MsgId, int SeqNo)> SendEncryptedAsync(byte[] body, bool contentRelated,
+        int? fixedSeqNo, Action<long>? beforeWrite, CancellationToken ct)
     {
         if (_dead) throw new MtpException("连接已断开");
-
-        long msgId = NextMsgId();
-        int seqNo = contentRelated ? Interlocked.Add(ref _seqNo, 2) - 1 : 0;
-        beforeWrite?.Invoke(msgId);
-        int padding = 16 - (body.Length & 15);
-        if (padding < 12) padding += 16;
-
-        var plain = new byte[32 + body.Length + padding];
-        BinaryPrimitives.WriteInt64LittleEndian(plain.AsSpan(0), _salt);
-        BinaryPrimitives.WriteUInt64LittleEndian(plain.AsSpan(8), _sessionId);
-        BinaryPrimitives.WriteInt64LittleEndian(plain.AsSpan(16), msgId);
-        BinaryPrimitives.WriteInt32LittleEndian(plain.AsSpan(24), seqNo);
-        BinaryPrimitives.WriteInt32LittleEndian(plain.AsSpan(28), body.Length);
-        Buffer.BlockCopy(body, 0, plain, 32, body.Length);
-        RandomNumberGenerator.Fill(plain.AsSpan(32 + body.Length));
-
-        var msgKey = MtpCrypto.ComputeMsgKey(_key.Key, plain, 0);
-        Span<byte> aesKey = stackalloc byte[32];
-        Span<byte> aesIv = stackalloc byte[32];
-        MtpCrypto.DeriveAesKeyIv(_key.Key, msgKey, 0, aesKey, aesIv);
-        MtpCrypto.AesIgeEncrypt(plain, aesKey, aesIv);
-
-        var packet = new byte[8 + 16 + plain.Length];
-        BinaryPrimitives.WriteUInt64LittleEndian(packet.AsSpan(0), _key.Id);
-        msgKey.CopyTo(packet, 8);
-        Buffer.BlockCopy(plain, 0, packet, 24, plain.Length);
 
         await _writeLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            long msgId = NextMsgId();
+            // 内容消息：2k+1 且 k++；非内容消息（ack）：2k（不是 0！）
+            int seqNo = fixedSeqNo ?? (contentRelated ? AllocSeqNo() : CurrentNonContentSeqNo());
+            beforeWrite?.Invoke(msgId);
+
+            int padding = 16 - (body.Length & 15);
+            if (padding < 12) padding += 16;
+
+            var plain = new byte[32 + body.Length + padding];
+            BinaryPrimitives.WriteInt64LittleEndian(plain.AsSpan(0), _salt);
+            BinaryPrimitives.WriteUInt64LittleEndian(plain.AsSpan(8), _sessionId);
+            BinaryPrimitives.WriteInt64LittleEndian(plain.AsSpan(16), msgId);
+            BinaryPrimitives.WriteInt32LittleEndian(plain.AsSpan(24), seqNo);
+            BinaryPrimitives.WriteInt32LittleEndian(plain.AsSpan(28), body.Length);
+            Buffer.BlockCopy(body, 0, plain, 32, body.Length);
+            RandomNumberGenerator.Fill(plain.AsSpan(32 + body.Length));
+
+            var msgKey = MtpCrypto.ComputeMsgKey(_key.Key, plain, 0);
+            Span<byte> aesKey = stackalloc byte[32];
+            Span<byte> aesIv = stackalloc byte[32];
+            MtpCrypto.DeriveAesKeyIv(_key.Key, msgKey, 0, aesKey, aesIv);
+            MtpCrypto.AesIgeEncrypt(plain, aesKey, aesIv);
+
+            var packet = new byte[8 + 16 + plain.Length];
+            BinaryPrimitives.WriteUInt64LittleEndian(packet.AsSpan(0), _key.Id);
+            msgKey.CopyTo(packet, 8);
+            Buffer.BlockCopy(plain, 0, packet, 24, plain.Length);
+
+            if (MtpLog.Verbose)
+                MtpLog.Write($"[{_sid}] -> msg {msgId:x16} seq={seqNo} {(contentRelated ? "内容" : "ack ")} len={body.Length}");
             await _t.SendFrameAsync(packet, ct).ConfigureAwait(false);
+            return (msgId, seqNo);
         }
         finally
         {
             _writeLock.Release();
         }
-        return msgId;
     }
 
     private byte[] WrapInit(byte[] query)
@@ -218,12 +245,13 @@ public sealed class MtpConnection : IAsyncDisposable
             byte[] payload = wrap ? WrapInit(body) : body;
 
             var tcs = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            long msgId = 0;
-            await SendEncryptedAsync(payload, contentRelated: true, id =>
+            // 每次尝试都重新分配 seq_no：被拒的消息不计入服务端计数，
+            // 而期间别的请求可能已经分配了更大的号，复用旧的会被判 "seq_no too low"
+            var sent = await SendEncryptedAsync(payload, contentRelated: true, null, id =>
             {
-                msgId = id;
                 _pending[id] = tcs;
             }, ct).ConfigureAwait(false);
+            long msgId = sent.MsgId;
             try
             {
                 using var reg = ct.Register(static s => ((TaskCompletionSource<byte[]>)s!).TrySetCanceled(), tcs);
@@ -362,8 +390,15 @@ public sealed class MtpConnection : IAsyncDisposable
             {
                 long badMsgId = BinaryPrimitives.ReadInt64LittleEndian(body.AsSpan(4));
                 int code = BinaryPrimitives.ReadInt32LittleEndian(body.AsSpan(16));
-                if (code == 16) _timeOffset += 1;      // msg_id 太低
-                else if (code == 17) _timeOffset -= 1; // msg_id 太高
+                // 16=msg_id 太低 17=太高 19=msg_id 不合法 20=太旧 32=seq_no 太低 33=太高 48=salt 不对
+                if (code == 16) _timeOffset += 1;
+                else if (code == 17) _timeOffset -= 1;
+                int n = Interlocked.Increment(ref _badMsgCount);
+                if (n <= 3)
+                    MtpLog.Write($"[{_sid}] <- bad_msg code={code} badMsgId={badMsgId:x16} " +
+                                 $"pending={_pending.ContainsKey(badMsgId)} localSeq={_seqNo}");
+                if (code is 32 or 33)
+                    MtpLog.Write($"seq_no 不同步（code {code}）：本地 {_seqNo}，重试会复用同一 seq_no");
                 if (_pending.TryRemove(badMsgId, out var tcs))
                     tcs.TrySetException(new RetryException($"bad_msg_notification code={code}"));
                 break;
@@ -431,7 +466,7 @@ public sealed class MtpConnection : IAsyncDisposable
             var w = new TlWriter();
             w.WriteUInt(TlIds.MsgsAck).WriteVectorHeader(ids.Length);
             foreach (var id in ids) w.WriteLong(id);
-            await SendEncryptedAsync(w.ToArray(), contentRelated: false, null, _cts.Token).ConfigureAwait(false);
+            await SendEncryptedAsync(w.ToArray(), contentRelated: false, null, null, _cts.Token).ConfigureAwait(false);
         }
         catch
         {

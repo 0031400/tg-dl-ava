@@ -142,6 +142,13 @@ Mtproto/
   会得到 `400 LIMIT_INVALID`。永远传整个分片，服务端只返回剩下的字节。
 * **`exportAuthorization` 不能导出"当前连接所在 DC"的授权**，也不能导出主 DC 的
   （实测回 `303 USER_MIGRATE_<home_dc>`）。所以主 DC 上只有登录时那几条 key。
+* **非内容消息（`msgs_ack`）的 `seq_no` 不是 0，而是 `2 × 已发内容消息数`**。
+  发 0 会被判 `32 seq_no too low`，ack 全被拒 → 服务端不停重发未确认消息 → 最后直接踢连接
+  （表现为 `Unable to read beyond the end of the stream`）。内容消息是 `2k+1`，ack 是 `2k`。
+* **`msg_id` / `seq_no` 必须在发送锁内按"实际发送顺序"分配**，否则并发发送时顺序错乱，
+  服务端判 `msg_id/seq_no too low`。
+* **重试要重新分配 `seq_no`，不能复用**：被拒的消息不计入服务端计数，而并发期间别的请求
+  已经分配了更大的号，复用旧号会被判 `seq_no too low`。
 * **`importAuthorization` 不能并发**，但 DH 可以 —— 所以是「先导出 + 再握手 + 再导入」。
 
 ## 性能：AES-IGE 实测（512 KiB × 400 次）
